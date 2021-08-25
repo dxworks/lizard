@@ -550,10 +550,12 @@ class FileAnalyzer(object):  # pylint: disable=R0903
         except IOError:
             sys.stderr.write("Error: Fail to read source file '%s'\n"
                              % filename)
-        except IndexError:
+        except (IndexError, RecursionError):
             sys.stderr.write("Error: Fail to parse file '%s'\n"
                              % filename)
-            raise
+        except Exception:
+            sys.stderr.write("Error: Some exception happened while analyzing file '%s'\n"
+                             % filename)
         return FileInformation(filename, 0, [])
 
     def analyze_source_code(self, filename, code):
