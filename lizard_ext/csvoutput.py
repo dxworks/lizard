@@ -49,22 +49,25 @@ def csv_output(result, options):
                         extension_string = '{},{}'.\
                             format(extension_string,
                                    source_function.__getattribute__(variable))
-                    print('{},{},{},{},{},"{}","{}","{}","{}",{},{}{}'.format(
-                        source_function.nloc,
-                        source_function.cyclomatic_complexity,
-                        source_function.token_count,
-                        len(source_function.parameters),
-                        source_function.length,
-                        "{}@{}-{}@{}".format(
+                    try:
+                        print('{},{},{},{},{},"{}","{}","{}","{}",{},{}{}'.format(
+                            source_function.nloc,
+                            source_function.cyclomatic_complexity,
+                            source_function.token_count,
+                            len(source_function.parameters),
+                            source_function.length,
+                            "{}@{}-{}@{}".format(
+                                source_function.name.replace("\"", "'"),
+                                source_function.start_line,
+                                source_function.end_line,
+                                source_file.filename
+                            ),
+                            source_file.filename,
                             source_function.name.replace("\"", "'"),
+                            source_function.long_name.replace("\"", "'"),
                             source_function.start_line,
                             source_function.end_line,
-                            source_file.filename
-                        ),
-                        source_file.filename,
-                        source_function.name.replace("\"", "'"),
-                        source_function.long_name.replace("\"", "'"),
-                        source_function.start_line,
-                        source_function.end_line,
-                        extension_string
-                    ))
+                            extension_string
+                        ))
+                    except UnicodeError:
+                        print('Error writing line to csv output!')
