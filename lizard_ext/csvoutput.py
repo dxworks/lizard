@@ -46,11 +46,11 @@ def csv_output(result, options):
                 if source_function:
                     extension_string = ''
                     for variable in extension_variables:
-                        extension_string = '{},{}'.\
+                        extension_string = '{},{}'. \
                             format(extension_string,
                                    source_function.__getattribute__(variable))
                     try:
-                        print('{},{},{},{},{},"{}","{}","{}","{}",{},{}{}'.format(
+                        line = '{},{},{},{},{},"{}","{}","{}","{}",{},{}{}'.format(
                             source_function.nloc,
                             source_function.cyclomatic_complexity,
                             source_function.token_count,
@@ -60,14 +60,14 @@ def csv_output(result, options):
                                 source_function.name.replace("\"", "'"),
                                 source_function.start_line,
                                 source_function.end_line,
-                                source_file.filename
-                            ),
+                                source_file.filename),
                             source_file.filename,
                             source_function.name.replace("\"", "'"),
                             source_function.long_name.replace("\"", "'"),
                             source_function.start_line,
                             source_function.end_line,
-                            extension_string
-                        ))
+                            extension_string)
+                        if len(source_function.long_name) < 1000 and len(source_function.name) < 1000:
+                            print(line)
                     except UnicodeError:
                         print('Error writing line to csv output!')
