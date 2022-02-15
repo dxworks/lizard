@@ -1,4 +1,4 @@
-name: Lizard
+name: lizard
 run: once
 results:
   - dir: ${instrument}/results
