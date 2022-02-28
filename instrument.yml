@@ -4,5 +4,5 @@ results:
   - dir: ${instrument}/results
 commands:
   - name: Run Lizzard
-    win: python lizard.py -V --csv ${repo} > ${instrument}/results/${repoName}.csv
-    unix: python3 lizard.py -V --csv ${repo} > ${instrument}/results/${repoName}.csv
+    win: python lizard.py -V --csv "${repo}" > "${instrument}/results/${repoName}.csv"
+    unix: python3 lizard.py -V --csv "${repo}" > "${instrument}/results/${repoName}.csv"
