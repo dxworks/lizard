@@ -542,7 +542,6 @@ class FileAnalyzer(object):  # pylint: disable=R0903
 
     def __call__(self, filename):
         try:
-            print("Processing file " + filename)
             return self.analyze_source_code(
                 filename, auto_read(filename))
         except UnicodeDecodeError:
@@ -560,6 +559,7 @@ class FileAnalyzer(object):  # pylint: disable=R0903
         return FileInformation(filename, 0, [])
 
     def analyze_source_code(self, filename, code):
+        sys.stderr.write("Processing file: " + filename + "\n")
         context = FileInfoBuilder(filename)
         reader = (get_reader_for(filename) or CLikeReader)(context)
         tokens = reader.generate_tokens(code)
