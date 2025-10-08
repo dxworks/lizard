@@ -93,8 +93,33 @@ class Test_c_cpp_lizard(unittest.TestCase):
         result = get_cpp_function_list("""int fun(){char *a="\\\\";}""")
         self.assertEqual(1, len(result))
 
-    def test_function_with_no_param(self):
+    def test_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 100'000; if(b) c; return 123'456'789;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_hex_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 0x12ab'34cd; if(b) c; return 0xEF56'7890'1A2B;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_bin_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 0b0101'1100; if(b) c; return 0b1111'0000'1100'1110;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_function_with_no_param_omitted(self):
         result = get_cpp_function_list("int fun(){}")
+        self.assertEqual(0, result[0].parameter_count)
+
+    def test_function_with_no_param_void(self):
+        result = get_cpp_function_list("int fun(void){}")
         self.assertEqual(0, result[0].parameter_count)
 
     def test_function_with_1_param(self):
@@ -480,6 +505,25 @@ class Test_c_cpp_lizard(unittest.TestCase):
         self.assertEqual(1, len(result))
         self.assertEqual("A::foo", result[0].name)
 
+    def test_aggregate_initialization_with_double(self):
+        result = get_cpp_function_list('''
+            struct Bar {
+                double value;
+            };
+
+            void foo() {
+                Bar bar = {1.};
+                double x = 1.0;
+                double y = .5;
+                double z = 1.e-10;
+            }
+
+            void bar() {}
+        ''')
+        self.assertEqual(2, len(result))
+        self.assertEqual("foo", result[0].name)
+        self.assertEqual("bar", result[1].name)
+
 class Test_cpp11_Attributes(unittest.TestCase):
     """C++11 extendable attributes can appear pretty much anywhere."""
 
@@ -659,3 +703,46 @@ class Test_Dialects(unittest.TestCase):
                 }''')
         self.assertEqual(1, len(result))
         self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_lambda_expression_issue_429(self):
+        """Test lambda expression parsing issue from GitHub issue #429."""
+        # This is the exact code from the issue that causes problems
+        code = """
+auto CombPairHash = [](const CombPair &pair) {
+  return pair.first ^ (pair.second<<1); };
+
+int main() {
+    return 0;
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the main function, lambda should not be treated as a function
+        self.assertEqual(1, len(result))
+        self.assertEqual("main", result[0].name)
+
+    def test_lambda_expression_with_capture(self):
+        """Test lambda expression with capture list."""
+        code = """
+auto lambda = [&](int x) { return x * 2; };
+
+void foo() {
+    auto result = lambda(5);
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the foo function, lambda should not be treated as a function
+        self.assertEqual(1, len(result))
+        self.assertEqual("foo", result[0].name)
+
+    def test_lambda_expression_in_function(self):
+        """Test lambda expression inside a function."""
+        code = """
+void process() {
+    auto lambda = [](int x) { return x + 1; };
+    int result = lambda(10);
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the process function
+        self.assertEqual(1, len(result))
+        self.assertEqual("process", result[0].name)

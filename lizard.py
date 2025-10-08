@@ -43,6 +43,7 @@ try:
     from lizard_ext import print_csv
     from lizard_ext import html_output
     from lizard_ext import auto_open, auto_read
+    from lizard_ext import print_checkstyle
 except ImportError:
     sys.stderr.write("Cannot find the lizard_ext modules.")
 
@@ -217,6 +218,11 @@ def arg_parser(prog=None):
                         const="modified",
                         dest="extensions",
                         default=[])
+    parser.add_argument("--checkstyle",
+                        help='''Generate Checkstyle XML output for integration with Jenkins and other tools.''',
+                        action="store_const",
+                        const=print_checkstyle,
+                        dest="printer")
     _extension_arg(parser)
     parser.add_argument("-s", "--sort",
                         help='''Sort the warning with field. The field can be
@@ -281,10 +287,10 @@ class FunctionInfo(Nesting):  # pylint: disable=R0902
         self.full_parameters = []
         self.filename = filename
         self.top_nesting_level = -1
-        self.length = 0
         self.fan_in = 0
         self.fan_out = 0
         self.general_fan_out = 0
+        self.max_nesting_depth = 0  # Initialize max_nesting_depth to 0
 
     @property
     def name_in_space(self):
@@ -299,16 +305,25 @@ class FunctionInfo(Nesting):  # pylint: disable=R0902
         return self.name.split('::')[-1]
 
     location = property(lambda self:
-                        " %(name)s@%(start_line)s-%(end_line)s@%(filename)s"
-                        % self.__dict__)
+                        f" {self.name}@{self.start_line}-{self.end_line}@{self.filename}")
 
-    parameter_count = property(lambda self: len(self.full_parameters))
+    parameter_count = property(lambda self: len(self.parameters))
 
     @property
     def parameters(self):
-        matches = [re.search(r'(\w+)(\s=.*)?$', f)
+        # Exclude empty tokens as parameters. These can occur in languages
+        # allowing a trailing comma on the last parameter in an function
+        # argument list.
+        # Regex matches the parameter name, then optionally:
+        # - a default value given after an '=' sign
+        # - a type annotation given after a ':'
+        matches = [re.search(r'(\w+)(\s=.*)?(\s:.*)?$', f)
                    for f in self.full_parameters]
         return [m.group(1) for m in matches if m]
+
+    @property
+    def length(self):
+        return self.end_line - self.start_line + 1
 
     def add_to_function_name(self, app):
         self.name += app
@@ -361,7 +376,6 @@ class NestingStack(object):
     def __init__(self):
         self.nesting_stack = []
         self.pending_function = None
-        self.function_stack = []
 
     def with_namespace(self, name):
         return ''.join([x.name_in_space for x in self.nesting_stack] + [name])
@@ -410,6 +424,7 @@ class FileInfoBuilder(object):
         self.fileinfo = FileInformation(filename, 0)
         self.current_line = 0
         self.forgive = False
+        self.forgive_global = False
         self.newline = True
         self.global_pseudo_function = FunctionInfo('*global*', filename, 0)
         self.current_function = self.global_pseudo_function
@@ -438,8 +453,6 @@ class FileInfoBuilder(object):
         self.fileinfo.nloc += count
         self.current_function.nloc += count
         self.current_function.end_line = self.current_line
-        self.current_function.length = \
-            self.current_line - self.current_function.start_line + 1
         self.newline = count > 0
 
     def try_new_function(self, name):
@@ -475,7 +488,8 @@ class FileInfoBuilder(object):
 
     def end_of_function(self):
         if not self.forgive:
-            self.fileinfo.function_list.append(self.current_function)
+            if self.current_function.name != '*global*' or not self.forgive_global:
+                self.fileinfo.function_list.append(self.current_function)
         self.forgive = False
         if self.stacked_functions:
             self.current_function = self.stacked_functions.pop()
@@ -495,7 +509,9 @@ def comment_counter(tokens, reader):
         if comment is not None:
             for _ in comment.splitlines()[1:]:
                 yield '\n'
-            if comment.strip().startswith("#lizard forgive"):
+            if comment.strip().startswith("#lizard forgive global"):
+                reader.context.forgive_global = True
+            elif comment.strip().startswith("#lizard forgive"):
                 reader.context.forgive = True
             if "GENERATED CODE" in comment:
                 return
@@ -569,7 +585,9 @@ class FileAnalyzer(object):  # pylint: disable=R0903
             for _ in reader(tokens, reader):
                 pass
         except RecursionError as e:
-            sys.stderr.write("[skip] fail to process '%s' with RecursionError - %s\n" % (filename, e))
+            sys.stderr.write(
+                "[skip] fail to process '%s' with RecursionError - %s\n" %
+                (filename, e))
         return context.fileinfo
 
 
@@ -608,7 +626,7 @@ def whitelist_filter(warnings, script=None, whitelist=None):
 
     def get_whitelist(whitelist):
         if os.path.isfile(whitelist):
-            return open(whitelist, mode='r').read()
+            return auto_read(whitelist)
         if whitelist != DEFAULT_WHITELIST:
             print("WARNING: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print("WARNING: the whitelist \""+whitelist+"\" doesn't exist.")
@@ -718,17 +736,13 @@ class OutputScheme(object):
             if e.get("avg_caption", None)])
 
     def clang_warning_format(self):
-        return (
-            "{f.filename}:{f.start_line}: warning: {f.name} has " +
-            ", ".join([
-                "{{f.{ext[value]}}} {caption}"
-                .format(ext=e, caption=e['caption'].strip())
-                for e in self.items[:-1]
-                ]))
+        return ("{f.filename}:{f.start_line}: warning: {f.name} has {f.nloc} NLOC, "
+                "{f.cyclomatic_complexity} CCN, {f.token_count} token, {f.parameter_count} PARAM, "
+                "{f.length} length, {f.max_nesting_depth} ND")
 
     def msvs_warning_format(self):
         return (
-            "{f.filename}({f.start_line}): warning: {f.name} has " +
+            "{f.filename}({f.start_line}): warning: {f.name} ({f.long_name}) has " +
             ", ".join([
                 "{{f.{ext[value]}}} {caption}"
                 .format(ext=e, caption=e['caption'].strip())
@@ -896,14 +910,43 @@ def md5_hash_file(full_path_name):
 def get_all_source_files(paths, exclude_patterns, lans):
     '''
     Function counts md5 hash for the given file and checks if it isn't a
-    duplicate using set of hashes for previous files '''
+    duplicate using set of hashes for previous files.
+
+    If a .gitignore file is found in any of the given paths, it will be used
+    to filter out files that match the gitignore patterns.
+    '''
     hash_set = set()
+    gitignore_spec = None
+    base_path = None
+
+    def _load_gitignore():
+        nonlocal gitignore_spec, base_path
+        try:
+            import pathspec
+            for path in paths:
+                gitignore_path = os.path.join(path, '.gitignore')
+                if os.path.exists(gitignore_path):
+                    gitignore_file = auto_read(gitignore_path)
+                    # Read lines and strip whitespace and empty lines
+                    patterns = [line.strip() for line in gitignore_file.splitlines()]
+                    patterns = [p for p in patterns if p and not p.startswith('#')]
+                    gitignore_spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
+                    base_path = path
+                    break
+        except ImportError:
+            pass
 
     def _support(reader):
         return not lans or set(lans).intersection(
             reader.language_names)
 
     def _validate_file(pathname):
+        if gitignore_spec is not None and base_path is not None:
+            rel_path = os.path.relpath(pathname, base_path)
+            # Normalize path separators for consistent matching
+            rel_path = rel_path.replace(os.sep, '/')
+            if gitignore_spec.match_file(rel_path):
+                return False
         return (
             pathname in paths or (
                 get_reader_for(pathname) and
@@ -926,6 +969,7 @@ def get_all_source_files(paths, exclude_patterns, lans):
                     for filename in files:
                         yield os.path.join(root, filename)
 
+    _load_gitignore()
     return filter(_validate_file, all_listed_files(paths))
 
 
@@ -965,24 +1009,28 @@ def parse_args(argv):
     if opt.output_file:
         inferred_printer = infer_printer_from_file_ext(opt.output_file)
         if inferred_printer:
-            if not opt.printer:
+            # Always use print_checkstyle for .checkstyle.xml
+            if opt.output_file.lower().endswith('.checkstyle.xml'):
                 opt.printer = inferred_printer
-            else:
+            elif not opt.printer:
+                opt.printer = inferred_printer
+            elif opt.printer != inferred_printer:
                 msg = "Warning: overriding output file extension.\n"
                 sys.stderr.write(msg)
     return opt
 
 
 def infer_printer_from_file_ext(path):
-    mapping = {
-        '.csv': print_csv,
-        '.htm': html_output,
-        '.html': html_output,
-        '.xml': print_xml
-    }
-    _, ext = os.path.splitext(path)
-    printer = mapping.get(ext)
-    return printer
+    lower_path = path.lower()
+    if lower_path.endswith(".checkstyle.xml"):
+        return print_checkstyle
+    if lower_path.endswith(".html"):
+        return html_output
+    if lower_path.endswith(".xml"):
+        return print_xml
+    if lower_path.endswith(".csv"):
+        return print_csv
+    return None
 
 
 def open_output_file(path):
@@ -1037,16 +1085,27 @@ def main(argv=None):
         options.paths = auto_read(options.input_file).splitlines()
     original_stdout = sys.stdout
     output_file = None
-    if options.output_file:
-        output_file = open_output_file(options.output_file)
-        sys.stdout = output_file
     result = analyze(
         options.paths,
         options.exclude,
         options.working_threads,
         options.extensions,
         options.languages)
-    warning_count = printer(result, options, schema, AllResult)
+    warning_count = None
+    if options.output_file:
+        output_file = open_output_file(options.output_file)
+        sys.stdout = output_file
+        # Special handling for checkstyle output
+        if getattr(printer, "__name__", "") == "print_checkstyle":
+            warning_count = printer(result, options, schema, AllResult, file=output_file)
+        else:
+            warning_count = printer(result, options, schema, AllResult)
+    else:
+        # Special handling for checkstyle output
+        if getattr(printer, "__name__", "") == "print_checkstyle":
+            warning_count = printer(result, options, schema, AllResult, file=original_stdout)
+        else:
+            warning_count = printer(result, options, schema, AllResult)
     print_extension_results(options.extensions)
     list(result)
     if output_file:

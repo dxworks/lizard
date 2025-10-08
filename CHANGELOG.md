@@ -1,5 +1,108 @@
 # Change Log
 
+## 1.18.0
+
+### New Features
+- Add R language support with comprehensive function parsing
+- Add Structured Text (St) language support
+- Add C++ lambda expression support for improved parsing
+- Add Nesting Depth feature for better code analysis
+
+### Improvements
+- Enhanced R function parsing for multiple assignments
+- Improved string interpolation handling in Go
+- Better function nesting detection
+- Updated documentation to include new supported languages
+
+### Bug Fixes
+- Fix nesting depth calculation issues
+- Fix function nesting problems
+- Various parsing improvements across multiple languages
+
+## 1.17.30
+
+Fix TypeScript function detection issue.
+
+## 1.17.29
+
+Fix modern PHP issues.
+
+## 1.17.28
+
+Fix Java function count issue.
+
+## 1.17.27
+
+Fix Java function count issue.
+
+## 1.17.26
+
+A blank release to fix the installation issue.
+
+## 1.17.25
+
+Bug fixes. "lizard forgive" for python
+
+## 1.17.24
+
+Added support for `#lizard forgive global` to suppress warnings for all code outside of functions, for languages like Python, Perl, etc, that allow global code.
+
+`#lizard forgive` at the global level will suppress warnings for all code after it.
+
+## 1.17.23
+
+Bug fixes.
+
+## 1.17.22
+
+Add Complete Perl support.
+
+## 1.17.21
+
+Add Perl support.
+
+## 1.17.19
+
+Bug fixes.
+
+## 1.17.18
+
+Bug fixes.
+
+## 1.17.17
+
+Bug fixes.
+
+## 1.17.16
+
+Add support for gitignore files.
+A few bug fixes.
+
+## 1.17.15
+
+Add VueJS support.
+
+## 1.17.14
+
+Add TSX support.
+
+## 1.17.13
+
+Bug fix:
+  Replace re.NOFLAG with 0 to make it compatible with Python 3.10+
+
+## 1.17.12
+
+Bug fix:
+  Fortran support for ELSEIF
+
+## 1.17.9
+
+Bug fix:
+  Java generic like List<? extends String>
+  JSX file extension
+
+
 ## 1.17.8
 
 Add Fortran to the language supported

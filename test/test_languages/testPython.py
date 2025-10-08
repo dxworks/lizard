@@ -1,8 +1,10 @@
 import unittest
 import inspect
 from ..testHelpers import get_python_function_list_with_extension
+from lizard import analyze_file, FileAnalyzer, get_extensions
 from lizard_ext.lizardnd import LizardExtension as NestDepth
 from lizard_languages.python import PythonReader
+import os
 
 
 def get_python_function_list(source_code):
@@ -13,6 +15,54 @@ class Test_tokenizer_for_Python(unittest.TestCase):
     def test_comment_with_quote(self):
         tokens = PythonReader.generate_tokens("#'\n''")
         self.assertEqual(["#'", "\n", "''"], list(tokens))
+
+    def test_multiline_string_tokens(self):
+        code = '''"""First line
+Second line with 'single quotes'
+Third line with "double quotes"
+Fourth line with mixed quotes
+Fifth line with # comment markers
+"""'''
+        tokens = list(PythonReader.generate_tokens(code))
+        self.assertEqual(1, len(tokens))  # The entire multi-line string should be one token
+        self.assertEqual(code, tokens[0])  # The token should preserve the exact string
+
+    def test_block_string_is_one_token(self):
+        code = 'def a():\n    a = """\na b c d e f g h i"""\n    return a\n'
+        functions = get_python_function_list(code)
+        self.assertEqual(9, functions[0].token_count)
+        self.assertEqual(4, functions[0].end_line)
+
+    def check_function_info(self, source, expect_token_count, expect_nloc, expect_endline):
+        functions = get_python_function_list(source)
+        self.assertEqual(expect_token_count, functions[0].token_count)
+        self.assertEqual(expect_nloc, functions[0].nloc)
+        self.assertEqual(expect_endline, functions[0].end_line)
+
+    def test_block_string(self):
+        self.check_function_info('def f():\n a="""block string"""', 7, 2, 2)
+        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
+        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
+        self.check_function_info("def f():\n a='''block\n string'''", 7, 3, 3)
+        self.check_function_info("def f():\n a='''block\n '''", 7, 3, 3)
+
+    def test_docstring_is_not_counted_in_nloc(self):
+        self.check_function_info("def f():\n '''block\n '''\n pass", 6, 2, 4)
+
+    def test_complex_multiline_string(self):
+        code = '''def f():
+            x = """First line
+                Second line with 'single quotes'
+                Third line with "double quotes"
+                Fourth line with mixed quotes
+                Fifth line with # comment markers
+                """
+            return x'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(9, functions[0].token_count)  # def, f, (), :, x, =, multiline-string, return, x
+        self.assertEqual(8, functions[0].nloc)  # 8 lines total
+        self.assertEqual(8, functions[0].end_line)
 
 
 class Test_Python_nesting_level(unittest.TestCase):
@@ -110,6 +160,31 @@ class Test_parser_for_Python(unittest.TestCase):
         self.assertEqual(6, functions[0].end_line)
         self.assertEqual(13, functions[1].end_line)
 
+    def test_multi_line_function_def_with_indentation_more_than_function_body(self):
+        def function(arg1,
+                     arg2
+                     ):
+            if True:
+                return False
+
+        functions = get_python_function_list(inspect.getsource(function))
+        self.assertEqual(5, functions[0].nloc)
+        self.assertEqual(5, functions[0].end_line)
+
+    def test_function_surrounded_by_global_statements(self):
+        source = """
+        s1 = 'global statement'
+        def function(arg1,
+                     arg2
+                     ):
+            if True:
+                return False
+        s2 = 'global statement'
+        """
+        functions = get_python_function_list(source)
+        self.assertEqual(5, functions[0].nloc)
+        self.assertEqual(7, functions[0].end_line)
+
     def test_parameter_count(self):
         class namespace2:
             def function_with_2_parameters(a, b):
@@ -124,6 +199,62 @@ class Test_parser_for_Python(unittest.TestCase):
         functions = get_python_function_list(inspect.getsource(namespace_df))
         self.assertEqual(2, functions[0].parameter_count)
         self.assertEqual(['a', 'b'], functions[0].parameters)
+        self.assertEqual("function_with_2_parameters_and_default_value( a , b = None )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_type_annotations(self):
+        functions = get_python_function_list('''
+            def function_with_3_parameters(a: str, b: int, c: float):
+                pass
+        ''')
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].parameter_count)
+        self.assertEqual(['a', 'b', 'c'], functions[0].parameters)
+        self.assertEqual("function_with_3_parameters( a : str , b : int , c : float )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_type_annotation_and_default(self):
+        functions = get_python_function_list('''
+            def function_with_3_parameters(a: int = 1):
+                pass
+        ''')
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].parameter_count)
+        self.assertEqual(['a'], functions[0].parameters)
+        self.assertEqual("function_with_3_parameters( a : int = 1 )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_parameterized_type_annotations(self):
+        functions = get_python_function_list('''
+            def function_with_parameterized_parameter(a: dict[str, tuple[int, float]]):
+                pass
+            def function_with_3_parameterized_parameters(a: dict[str, int],
+                                                         b: list[float],
+                                                         c: tuple[int, float, str]
+                                                         ):
+                pass
+                
+        ''')
+        self.assertEqual(2, len(functions))
+        self.assertEqual(1, functions[0].parameter_count)
+        self.assertEqual(['a'], functions[0].parameters)
+        self.assertEqual("function_with_parameterized_parameter( a : dict [ str , tuple [ int , float ] ] )",
+                         functions[0].long_name)
+        self.assertEqual(3, functions[1].parameter_count)
+        self.assertEqual(['a', 'b', 'c'], functions[1].parameters)
+        self.assertEqual("function_with_3_parameterized_parameters( a : dict [ str , int ] , b : list [ float ] , c : tuple [ int , float , str ] )",
+                         functions[1].long_name)
+
+    def test_parameter_count_with_trailing_comma(self):
+        functions = get_python_function_list('''
+            def foo(arg1,
+                    arg2,
+                    ):
+                # comment
+                return True
+        ''')
+        self.assertEqual(2, functions[0].parameter_count)
+        self.assertEqual(['arg1', 'arg2'], functions[0].parameters)
 
     def test_function_end(self):
         class namespace3:
@@ -245,6 +376,75 @@ class Test_parser_for_Python(unittest.TestCase):
         functions = get_python_function_list(inspect.getsource(function_with_comments))
         self.assertEqual(2, functions[0].nloc)
 
+    def test_triple_quoted_strings_as_comments_not_counted_in_nloc(self):
+        """Test that triple-quoted strings used as comments are not counted in NLOC"""
+        # Single line triple-quoted string as comment
+        code1 = '''def test_func():
+    x = 1
+    """This is a comment, not a docstring."""
+    return x
+'''
+        functions = get_python_function_list(code1)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_multiline_triple_quoted_strings_as_comments_not_counted_in_nloc(self):
+        """Test that multiline triple-quoted strings used as comments are not counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    """This is a multiline comment.
+    It spans multiple lines.
+    And should not be counted."""
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_single_quoted_triple_strings_as_comments_not_counted_in_nloc(self):
+        """Test that single-quoted triple strings used as comments are not counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    \'''This is also a comment.
+    Using single quotes instead of double.
+    Should also not be counted.\'''
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_docstring_still_not_counted_in_nloc(self):
+        """Test that docstrings (first statement) are still correctly excluded from NLOC"""
+        code = '''def test_func():
+    """This is a proper docstring."""
+    x = 1
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_mixed_comments_and_triple_quoted_strings_not_counted_in_nloc(self):
+        """Test mixed regular comments and triple-quoted strings as comments"""
+        code = '''def test_func():
+    x = 1
+    # Regular comment
+    """Triple-quoted comment."""
+    y = 2
+    \'''Another triple-quoted comment.\'''
+    # Another regular comment
+    return x + y
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(4, functions[0].nloc)  # def, x=1, y=2, return x+y
+        
+    def test_triple_quoted_string_assigned_to_variable_counted_in_nloc(self):
+        """Test that triple-quoted strings assigned to variables ARE counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    comment = """This is assigned to a variable, so it's code."""
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(4, functions[0].nloc)  # def, x=1, comment=..., return x
+
     def test_odd_blank_line(self):
         code =  "class c:\n" + \
                 "    def f():\n" +\
@@ -274,33 +474,43 @@ class Test_parser_for_Python(unittest.TestCase):
         self.assertEqual(9, functions[0].cyclomatic_complexity)
         self.assertEqual(8, functions[0].max_nesting_depth)
 
+    def test_python_forgive_global(self):
+        code = '''
+# Global code with complexity
+x = 1
+if x > 0:
+    print("Positive")
+elif x < 0:
+    print("Negative")
+else:
+    print("Zero")
 
-    def test_block_string_is_one_token(self):
-        code =  'def a():\n' + \
-                "    a = '''\n" +\
-                "a b c d e f g h i'''\n"+\
-                "    return a\n"
+# #lizard forgive global
+# More global code with complexity
+y = 2
+if y > 0:
+    print("Y is positive")
+elif y < 0:
+    print("Y is negative")
+
+# This function should still be counted
+def test_function(param):
+    if param > 0:
+        print("Param is positive")
+    elif param < 0:
+        print("Param is negative")
+    else:
+        print("Param is zero")
+'''
         functions = get_python_function_list(code)
-        self.assertEqual(9, functions[0].token_count)
-        self.assertEqual(4, functions[0].end_line)
-
-    def check_function_info(self, source, expect_token_count, expect_nloc, expect_endline):
-        functions = get_python_function_list(source)
-        self.assertEqual(expect_token_count, functions[0].token_count)
-        self.assertEqual(expect_nloc, functions[0].nloc)
-        self.assertEqual(expect_endline, functions[0].end_line)
-
-    def test_block_string(self):
-        self.check_function_info('def f():\n a="""block string"""', 7, 2, 2)
-        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
-        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
-        self.check_function_info("def f():\n a='''block\n string'''", 7, 3, 3)
-        self.check_function_info("def f():\n a='''block\n '''", 7, 3, 3)
-
-    def test_docstring_is_not_counted_in_nloc(self):
-        self.check_function_info("def f():\n '''block\n '''\n pass", 6, 2, 4)
-
-    #global complexity
+        
+        # Should have one function (test_function) since global code is forgiven
+        self.assertEqual(1, len(functions))
+        
+        # Verify the function is the one we expect
+        function = functions[0]
+        self.assertEqual("test_function", function.name)
+        self.assertEqual(3, function.cyclomatic_complexity)  # 1 base + 2 conditions (else doesn't count)
 
 
 def top_level_function_for_test():

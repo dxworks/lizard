@@ -7,6 +7,7 @@ from lizard import print_warnings, print_and_save_modules, FunctionInfo, FileInf
     print_result, print_extension_results, get_extensions, OutputScheme, get_warnings, print_clang_style_warning,\
     parse_args, AllResult
 from lizard_ext import xml_output
+from lizard_ext.checkstyleoutput import checkstyle_output
 
 def print_result_with_scheme(result, option):
     return print_result(result, option, OutputScheme(option.extensions), AllResult)
@@ -39,7 +40,7 @@ class TestFunctionOutput(StreamStdoutTestCase):
         self.foo.cyclomatic_complexity = 16
         fileStat = FileInformation("FILENAME", 1, [self.foo])
         print_and_save_modules([fileStat],  self.scheme)
-        self.assertEqual("       1     16      1      0       0 foo@100-100@FILENAME", sys.stdout.stream.splitlines()[3])
+        self.assertEqual("       1     16      1      0       1 foo@100-100@FILENAME", sys.stdout.stream.splitlines()[3])
 
 
 class Ext(object):
@@ -70,7 +71,7 @@ class TestWarningOutput(StreamStdoutTestCase):
         fileSummary = FileInformation("FILENAME", 123, [self.foo])
         scheme = OutputScheme([Ext()])
         count = print_clang_style_warning([fileSummary], self.option, scheme, None)
-        self.assertIn("FILENAME:100: warning: foo has 1 NLOC, 30 CCN, 1 token, 0 PARAM, 0 length, 10 ND\n", sys.stdout.stream)
+        self.assertIn("FILENAME:100: warning: foo has 1 NLOC, 30 CCN, 1 token, 0 PARAM, 1 length, 10 ND\n", sys.stdout.stream)
         self.assertEqual(1, count)
 
     def test_sort_warning(self):
@@ -85,6 +86,15 @@ class TestWarningOutput(StreamStdoutTestCase):
     def test_sort_warning_with_generator(self):
         self.option.sorting = ['cyclomatic_complexity']
         print_warnings(self.option, self.scheme, (x for x in []))
+
+    def test_warning_when_max_nesting_depth_missing(self):
+        self.foo.cyclomatic_complexity = 30
+        # Intentionally not setting max_nesting_depth
+        fileSummary = FileInformation("FILENAME", 123, [self.foo])
+        scheme = OutputScheme([Ext()])
+        count = print_clang_style_warning([fileSummary], self.option, scheme, None)
+        self.assertIn("FILENAME:100: warning: foo has 1 NLOC, 30 CCN, 1 token, 0 PARAM, 1 length", sys.stdout.stream)
+        self.assertEqual(1, count)
 
 
 class TestFileInformationOutput(StreamStdoutTestCase):
@@ -125,7 +135,7 @@ class TestAllOutput(StreamStdoutTestCase):
     def test_should_not_print_extension_results_when_not_implemented(self):
         file_infos = []
         option = Mock(CCN=15, number = 0, thresholds={}, extensions = [object()], whitelist='')
-        return print_result_with_scheme(file_infos, option)
+        print_result_with_scheme(file_infos, option)
 
     def test_print_result(self):
         file_infos = [FileInformation('f1.c', 1, []), FileInformation('f2.c', 1, [])]
@@ -133,12 +143,12 @@ class TestAllOutput(StreamStdoutTestCase):
         self.assertEqual(0, print_result_with_scheme(file_infos, option))
 
     @patch.object(os.path, 'isfile')
-    @patch('lizard.open', create=True)
-    def check_whitelist(self, script, mock_open, mock_isfile):
+    @patch('lizard.auto_read')
+    def check_whitelist(self, script, mock_auto_read, mock_isfile):
         mock_isfile.return_value = True
-        mock_open.return_value.read.return_value = script
+        mock_auto_read.return_value = script
         file_infos = [FileInformation('f1.c', 1, [self.foo])]
-        option = Mock(thresholds={'cyclomatic_complexity':15, 'length':1000}, CCN=15, number = 0, arguments=100, length=1000, extensions=[])
+        option = Mock(thresholds={'cyclomatic_complexity':15, 'length':1000}, CCN=15, number = 0, arguments=100, length=1000, extensions=[], whitelist='whitelist.txt')
         return print_result_with_scheme(file_infos, option)
 
     def test_exit_with_non_zero_when_more_warning_than_ignored_number(self):
@@ -171,3 +181,21 @@ class TestXMLOutput(unittest.TestCase):
         self.assertIn('''<sum label="NCSS" value="0"/>''', xml_empty)
         self.assertIn('''<sum label="CCN" value="0"/>''', xml_empty)
         self.assertIn('''<sum label="Functions" value="0"/>''', xml_empty)
+
+
+class TestCheckstyleOutput(unittest.TestCase):
+    foo = FunctionInfo("foo", '', 100)
+    foo.cyclomatic_complexity = 16
+    file_infos = [FileInformation('f1.c', 1, [foo])]
+    from lizard_ext.checkstyleoutput import checkstyle_output
+    checkstyle_xml = checkstyle_output(AllResult(file_infos), True)
+
+    def test_checkstyle_output(self):
+        self.assertIn('<checkstyle', self.checkstyle_xml)
+        self.assertIn('<file', self.checkstyle_xml)
+        self.assertIn('<error', self.checkstyle_xml)
+        self.assertIn('foo has', self.checkstyle_xml)
+
+    def test_checkstyle_output_on_empty_folder(self):
+        xml_empty = checkstyle_output(AllResult([]), True)
+        self.assertIn('<checkstyle', xml_empty)
