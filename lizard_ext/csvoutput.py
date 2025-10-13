@@ -36,9 +36,9 @@ def csv_output(result, options):
     if options.verbose:
         extension_caption = ""
         for caption in extension_captions:
-            extension_caption = "{},{}".format(extension_caption, caption)
-        print("NLOC,CCN,token,PARAM,length,location,file,function," +
-              "long_name,start,end{}".format(extension_caption))
+            extension_caption = f"{extension_caption},{caption}"
+        print(f"NLOC,CCN,token,PARAM,length,location,file,function," +
+              f"long_name,start,end{extension_caption}")
 
     for source_file in result:
         if source_file:

@@ -4,9 +4,11 @@ Base class for all language parsers
 
 import re
 from copy import copy
+from functools import reduce
+from operator import or_
 
 
-class CodeStateMachine(object):
+class CodeStateMachine:
     """ the state machine """
     # pylint: disable=R0903
     # pylint: disable=R0902
@@ -48,6 +50,7 @@ class CodeStateMachine(object):
             self.next(self.saved_state)
             if self.callback:
                 self.callback()
+                self.callback = None
         self.last_token = token
         if self.to_exit:
             return True
@@ -112,18 +115,23 @@ class CodeReader:
         if not token_class:
             token_class = create_token
 
-        def _generate_tokens(source, add):
+        def _generate_tokens(source, add, flags=0):
             # DO NOT put any sub groups in the regex. Good for performance
             _until_end = r"(?:\\\n|[^\n])*"
-            combined_symbols = ["<<=", ">>=", "||", "&&", "===", "!==",
-                                "==", "!=", "<=", ">=", "->", "=>",
-                                "++", "--", '+=', '-=',
-                                "+", "-", '*', '/',
-                                '*=', '/=', '^=', '&=', '|=', "..."]
+            combined_symbols = [
+                "<<=", ">>=", "||", "&&", "===", "!==",
+                "==", "!=", "<=", ">=", "->", "=>",
+                "++", "--", '+=', '-=',
+                "+", "-", '*', '/',
+                '*=', '/=', '^=', '&=', '|=', "..."
+            ]
             token_pattern = re.compile(
                 r"(?:" +
                 r"\/\*.*?\*\/" +
                 add +
+                r"|(?:\d+\')+\d+" +
+                r"|0x(?:[0-9A-Fa-f]+\')+[0-9A-Fa-f]+" +
+                r"|0b(?:[01]+\')+[01]+" +
                 r"|\w+" +
                 r"|\"(?:\\.|[^\"\\])*\"" +
                 r"|\'(?:\\.|[^\'\\])*?\'" +
@@ -135,7 +143,7 @@ class CodeReader:
                 r"|\\\n" +
                 r"|\n" +
                 r"|[^\S\n]+" +
-                r"|.)", re.M | re.S)
+                r"|.)", re.M | re.S | flags)
             macro = ""
             for match in token_pattern.finditer(source):
                 token = token_class(match)
@@ -153,11 +161,36 @@ class CodeReader:
             if macro:
                 yield macro
 
-        return _generate_tokens(source_code, addition)
+        flag_dict = {
+            'a': re.A,  # ASCII-only matching
+            'i': re.I,  # Ignore case
+            'L': re.L,  # Locale dependent
+            'm': re.M,  # Multi-line
+            's': re.S,  # Dot matches all
+            'u': re.U,  # Unicode matching
+            'x': re.X   # Verbose
+        }
+
+        pattern = re.compile(r'\(\?[aiLmsux]+\)')
+        re_flags = ''.join(opt[2:-1] for opt in pattern.findall(addition))
+        flags = reduce(or_, (flag_dict[flag] for flag in re_flags), 0)
+        cleaned_addition = pattern.sub('', addition)
+
+        return _generate_tokens(
+            source_code,
+            cleaned_addition,
+            flags=flags)
 
     def __call__(self, tokens, reader):
         self.context = reader.context
         for token in tokens:
+            # Allow language-specific token processing
+            if self.process_token(token):
+                for state in self.parallel_states:
+                    state(token)
+                yield token
+                continue
+
             for state in self.parallel_states:
                 state(token)
             yield token
@@ -167,3 +200,15 @@ class CodeReader:
 
     def eof(self):
         pass
+
+    def process_token(self, token):
+        """Process a token before normal handling.
+        Return True if the token has been handled specially and should skip normal processing.
+
+        Args:
+            token: The token being processed
+
+        Returns:
+            bool: True if the token should skip normal processing, False otherwise
+        """
+        return False

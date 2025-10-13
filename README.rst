@@ -21,7 +21,8 @@ A list of supported languages:
 -  Java
 -  C# (C Sharp)
 -  JavaScript (With ES6 and JSX)
--  TypeScript
+-  TypeScript (With TSX)
+-  VueJS
 -  Objective-C
 -  Swift
 -  Python
@@ -35,6 +36,12 @@ A list of supported languages:
 -  Rust
 -  Fortran
 -  Kotlin
+-  Solidity
+-  Erlang
+-  Zig
+-  Perl
+-  Structured Text (St)
+-  R
 
 By default lizard will search for any source code that it knows and mix
 all the results together. This might not be what you want. You can use
@@ -57,7 +64,7 @@ often very hard to get all the included folders and files right when
 they are complicated. But we don't really need that kind of accuracy for
 cyclomatic complexity.
 
-It requires python2.7 or above (early versions are not verified).
+It requires python3.8 or above (early versions are not verified).
 
 Installation
 ------------
@@ -81,7 +88,7 @@ Or if you've got the source:
 
 ::
 
-   [sudo] python setup.py install --install-dir=/path/to/installation/directory/
+   [sudo] python setup.py install --prefix=/path/to/installation/directory/
 
 Usage
 -----
@@ -102,6 +109,13 @@ Exclude anything in the tests folder:
 
     lizard mySource/ -x"./tests/*"
 
+Use .gitignore file:
+
+::
+
+    lizard mySource/
+
+If there is a .gitignore file in the given path, lizard will automatically use it as an additional filter to exclude files that match the gitignore patterns. This is useful when you want to analyze only the tracked files in your git repository.
 
 Options
 ~~~~~~~
@@ -150,7 +164,8 @@ Options
   -X, --xml             Generate XML in cppncss style instead of the tabular output. Useful to
                         generate report in Jenkins server
   --csv                 Generate CSV output as a transform of the default output
-  -H, --html            Output HTML report
+  -H, --html            Output HTML report with interactive DataTables (sortable, searchable, filterable)
+  --checkstyle          Generate Checkstyle XML output for integration with Jenkins and other tools
   -m, --modified        Calculate modified cyclomatic complexity number , which count a
                         switch/case with multiple cases as one CCN.
   -E EXTENSIONS, --extension EXTENSIONS
@@ -291,13 +306,28 @@ Options in Comments
 -------------------
 
 You can use options in the comments of the source code to change the
-behavior of lizard. By putting "#lizard forgives" inside a function or
-before a function it will suppress the warning for that function.
+behavior of lizard. There are two types of forgiveness comments:
+
+1. Function forgiveness: Put "#lizard forgives" inside a function or before a function to suppress warnings for that function.
 
 ::
 
    int foo() {
-       // #lizard forgives the complexity
+       // #lizard forgives
+       ...
+   }
+
+2. Global code forgiveness: Put "#lizard forgive global" before global code to suppress warnings for all code outside of functions.
+
+::
+
+   // #lizard forgive global
+   int global_var = 0;
+   if (condition) {  // This complexity won't be counted
+       ...
+   }
+
+   int foo() {  // Functions are still counted normally
        ...
    }
 
