@@ -4,8 +4,13 @@ Language parser for erlang
 
 import re
 from lizard_languages.code_reader import CodeReader, CodeStateMachine
-import pygments.token as py_token
-from pygments import lex, lexers
+try:
+    import pygments.token as py_token
+    from pygments import lex, lexers
+except ImportError:
+    py_token = None
+    lex = None
+    lexers = None
 
 
 class ErlangReader(CodeReader):
@@ -26,6 +31,10 @@ class ErlangReader(CodeReader):
 
     @staticmethod
     def generate_tokens(source_code, addition='', token_class=None):
+        if lexers is None or lex is None or py_token is None:
+            # Fallback when pygments is not available: use generic tokenization.
+            return CodeReader.generate_tokens(source_code, addition, token_class)
+
         lexer = lexers.get_lexer_by_name('erlang')
         tokens = lex(source_code, lexer=lexer)
         return map(
