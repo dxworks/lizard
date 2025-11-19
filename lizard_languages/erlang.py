@@ -18,7 +18,15 @@ class ErlangReader(CodeReader):
 
     ext = ['erl', 'hrl', 'es', 'escript']
     language_names = ['erlang']
-    _conditions = {'and', 'case', 'catch', 'if', 'not', 'or', '?', 'when'}
+    
+    # Separated condition categories
+    _control_flow_keywords = {'if', 'catch', 'when'}  # when is used in guards
+    _logical_operators = {'and', 'or', 'not'}
+    _case_keywords = {'case'}
+    # Note: '?' in Erlang is a macro expansion operator (e.g., ?MODULE, ?EMPTY_NODE)
+    # Unlike C-style ternary, it's for compile-time macro substitution
+    # Included in ternary_operators because macro usage adds to code complexity
+    _ternary_operators = {'?'}
 
     def __init__(self, context):
         super(ErlangReader, self).__init__(context)

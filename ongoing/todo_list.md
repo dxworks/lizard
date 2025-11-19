@@ -1,11 +1,13 @@
-- [x] Fix ES6/JavaScript template string tokenization to match test expectations (completed)
-- [ ] Create or update `ongoing/checkstyle_output.md` with requirements and design notes.
-- [ ] Add `--checkstyle` option to the CLI and ensure it appears in `lizard --help`.
-- [ ] Implement `lizard_ext/checkstyleoutput.py` to generate Checkstyle XML output.
-- [ ] Integrate the new output so `--checkstyle` and/or `.checkstyle.xml` triggers it.
-- [ ] Add/extend tests to verify:
-      - CLI accepts `--checkstyle`
-      - Output is valid Checkstyle XML
-      - Output is accepted by Checkstyle consumers (e.g., Jenkins Warnings NG)
-      - Help message includes the new option
-- [ ] Update documentation as needed (requirement doc, README). 
+# TODO List
+
+## Completed
+
+### Condition Categories Refactoring ✅
+All phases complete. See `CONDITIONS_REFACTORING.md` for details.
+
+### Checkstyle Output Feature ✅
+Feature is complete and functional. Implementation in `lizard_ext/checkstyleoutput.py`.
+
+## Active
+
+(No active tasks)

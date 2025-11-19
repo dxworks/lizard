@@ -22,11 +22,15 @@ class StReader(CodeReader, StCommentsMixin):
     language_names = ['st']
     macro_pattern = re.compile(r"#\s*(\w+)\s*(.*)", re.M | re.S)
 
-    # track block starters
-    _conditions = set([
-        'if', 'elsif', 'case', 'for', 'while', 'repeat',
-        'IF', 'ELSIF', 'CASE', 'FOR', 'WHILE', 'REPEAT'
-    ])
+    # Separated condition categories (case-insensitive language)
+    _control_flow_keywords = {
+        'if', 'elsif', 'for', 'while', 'repeat',
+        'IF', 'ELSIF', 'FOR', 'WHILE', 'REPEAT'
+    }
+    # ST is case-insensitive, so include both lowercase and uppercase forms
+    _logical_operators = {'and', 'or', 'AND', 'OR'}
+    _case_keywords = {'case', 'CASE'}
+    _ternary_operators = set()
 
     _functions = set([
         'FUNCTION_BLOCK', 'FUNCTION', 'ACTION'

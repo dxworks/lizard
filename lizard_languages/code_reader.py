@@ -94,12 +94,36 @@ class CodeReader:
     ext = []
     languages = None
     extra_subclasses = set()
-    _conditions = {'if', 'for', 'while', '&&', '||', '?', 'catch', 'case'}
+    
+    # Condition categories - separate types that contribute to cyclomatic complexity
+    _control_flow_keywords = {'if', 'for', 'while', 'catch'}
+    _logical_operators = {'&&', '||'}
+    _case_keywords = {'case'}
+    _ternary_operators = {'?'}
+
+    @classmethod
+    def _build_conditions(cls):
+        """Build combined conditions set from separated categories.
+        
+        Returns combined set of all condition types for CCN calculation.
+        """
+        return (cls._control_flow_keywords | 
+                cls._logical_operators | 
+                cls._case_keywords | 
+                cls._ternary_operators)
 
     def __init__(self, context):
         self.parallel_states = []
         self.context = context
-        self.conditions = copy(self._conditions)
+        
+        # Build combined conditions set from separated categories
+        self.conditions = copy(self.__class__._build_conditions())
+        
+        # Expose individual categories for extensions
+        self.control_flow_keywords = copy(self.__class__._control_flow_keywords)
+        self.logical_operators = copy(self.__class__._logical_operators)
+        self.case_keywords = copy(self.__class__._case_keywords)
+        self.ternary_operators = copy(self.__class__._ternary_operators)
 
     @classmethod
     def match_filename(cls, filename):
@@ -138,7 +162,7 @@ class CodeReader:
                 r"|\/\/" + _until_end +
                 r"|\#" +
                 r"|:=|::|\*\*" +
-                r"|\<\s*\?(?:\s*extends\s+\w+)?\s*\>" +
+                r"|\<(?=(?:[^<>]*\?)+[^<>]*\>)(?:[\w\s,.?]|(?:extends))+\>" +
                 r"|" + r"|".join(re.escape(s) for s in combined_symbols) +
                 r"|\\\n" +
                 r"|\n" +
