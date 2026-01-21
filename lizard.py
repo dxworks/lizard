@@ -44,6 +44,7 @@ try:
     from lizard_ext import html_output
     from lizard_ext import auto_open, auto_read
     from lizard_ext import print_checkstyle
+    from lizard_ext.ignore_filter import load_ignore_spec, should_ignore_file
 except ImportError:
     sys.stderr.write("Cannot find the lizard_ext modules.")
 
@@ -918,6 +919,7 @@ def get_all_source_files(paths, exclude_patterns, lans):
     hash_set = set()
     gitignore_spec = None
     base_path = None
+    ignore_spec, ignore_base_path = load_ignore_spec(paths, auto_read)
 
     def _load_gitignore():
         nonlocal gitignore_spec, base_path
@@ -941,6 +943,8 @@ def get_all_source_files(paths, exclude_patterns, lans):
             reader.language_names)
 
     def _validate_file(pathname):
+        if should_ignore_file(pathname, ignore_spec, ignore_base_path):
+            return False
         if gitignore_spec is not None and base_path is not None:
             rel_path = os.path.relpath(pathname, base_path)
             # Normalize path separators for consistent matching
