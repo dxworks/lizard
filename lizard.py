@@ -919,7 +919,7 @@ def get_all_source_files(paths, exclude_patterns, lans):
     hash_set = set()
     gitignore_spec = None
     base_path = None
-    ignore_spec, ignore_base_path = load_ignore_spec(paths, auto_read)
+    ignore_spec, ignore_base_path = load_ignore_spec(auto_read)
 
     def _load_gitignore():
         nonlocal gitignore_spec, base_path
