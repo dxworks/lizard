@@ -15,6 +15,7 @@ def load_ignore_spec(paths, auto_read_func):
                 patterns = [line.strip() for line in ignore_file.splitlines()]
                 patterns = [p for p in patterns if p and not p.startswith('#')]
                 ignore_spec = pathspec.PathSpec.from_lines('gitignore', patterns)
+                print("Loaded .ignore file from '%s' with %d pattern(s): %s" % (ignore_path, len(patterns), ', '.join(patterns)))
                 return ignore_spec, path
     except ImportError:
         pass
