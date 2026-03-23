@@ -27,6 +27,10 @@
       border-left: 4px solid #cf222e;
     }
 
+    .lizard-summary.status-missing {
+      border-left: 4px solid #8c959f;
+    }
+
     .lizard-summary .summary-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -58,43 +62,47 @@
   <h2>Lizard</h2>
   <p>Status: <strong>{{status}}</strong></p>
 
-  <div class="summary-grid">
-    <div class="summary-item"><strong>CSV files</strong><br>{{metrics.csvFiles}}</div>
-    <div class="summary-item"><strong>Unique files</strong><br>{{metrics.uniqueFiles}}</div>
-    <div class="summary-item"><strong>Functions</strong><br>{{metrics.functionsTotal}}</div>
-    <div class="summary-item"><strong>Total NLOC</strong><br>{{metrics.nlocTotal}}</div>
-    <div class="summary-item"><strong>Average CCN</strong><br>{{metrics.averageCcn}}</div>
-    <div class="summary-item"><strong>Max CCN</strong><br>{{metrics.maxCcn}}</div>
-    <div class="summary-item"><strong>Average length</strong><br>{{metrics.averageLength}}</div>
-    <div class="summary-item"><strong>Max length</strong><br>{{metrics.maxLength}}</div>
-    <div class="summary-item"><strong>Generated at</strong><br>{{generatedAt}}</div>
-  </div>
+  {{#if isMissing}}
+    <p>Summary input is missing</p>
+  {{else}}
+    <div class="summary-grid">
+      <div class="summary-item"><strong>CSV files</strong><br>{{metrics.csvFiles}}</div>
+      <div class="summary-item"><strong>Unique files</strong><br>{{metrics.uniqueFiles}}</div>
+      <div class="summary-item"><strong>Functions</strong><br>{{metrics.functionsTotal}}</div>
+      <div class="summary-item"><strong>Total NLOC</strong><br>{{metrics.nlocTotal}}</div>
+      <div class="summary-item"><strong>Average CCN</strong><br>{{metrics.averageCcn}}</div>
+      <div class="summary-item"><strong>Max CCN</strong><br>{{metrics.maxCcn}}</div>
+      <div class="summary-item"><strong>Average length</strong><br>{{metrics.averageLength}}</div>
+      <div class="summary-item"><strong>Max length</strong><br>{{metrics.maxLength}}</div>
+      <div class="summary-item"><strong>Generated at</strong><br>{{generatedAt}}</div>
+    </div>
 
-  <h3>Top Complex Functions</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>Function</th>
-        <th>File</th>
-        <th>CCN</th>
-        <th>NLOC</th>
-        <th>Length</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{#if topFunctions}}
-        {{#each topFunctions}}
-          <tr>
-            <td>{{this.function}}</td>
-            <td>{{this.file}}</td>
-            <td>{{this.ccn}}</td>
-            <td>{{this.nloc}}</td>
-            <td>{{this.length}}</td>
-          </tr>
-        {{/each}}
-      {{else}}
-        <tr><td colspan="5">No function metrics available.</td></tr>
-      {{/if}}
-    </tbody>
-  </table>
+    <h3>Top Complex Functions</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Function</th>
+          <th>File</th>
+          <th>CCN</th>
+          <th>NLOC</th>
+          <th>Length</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#if topFunctions}}
+          {{#each topFunctions}}
+            <tr>
+              <td>{{this.function}}</td>
+              <td>{{this.file}}</td>
+              <td>{{this.ccn}}</td>
+              <td>{{this.nloc}}</td>
+              <td>{{this.length}}</td>
+            </tr>
+          {{/each}}
+        {{else}}
+          <tr><td colspan="5">No function metrics available.</td></tr>
+        {{/if}}
+      </tbody>
+    </table>
+  {{/if}}
 </section>
