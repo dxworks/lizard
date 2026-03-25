@@ -1,41 +1,19 @@
-<section class="lizard-summary {{statusClass}}">
+<section class="lizard-summary">
   <style>
     .lizard-summary {
-      border: 1px solid #d0d7de;
-      border-radius: 8px;
-      padding: 16px;
-      margin: 16px 0;
-      background: #ffffff;
       color: #1f2328;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    .lizard-summary h2,
     .lizard-summary h3 {
       margin-top: 0;
-    }
-
-    .lizard-summary.status-success {
-      border-left: 4px solid #1a7f37;
-    }
-
-    .lizard-summary.status-warning {
-      border-left: 4px solid #9a6700;
-    }
-
-    .lizard-summary.status-error {
-      border-left: 4px solid #cf222e;
-    }
-
-    .lizard-summary.status-missing {
-      border-left: 4px solid #8c959f;
     }
 
     .lizard-summary .summary-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 8px 16px;
-      margin: 12px 0;
+      margin: 4px 0;
     }
 
     .lizard-summary .summary-item {
@@ -58,9 +36,6 @@
       vertical-align: top;
     }
   </style>
-
-  <h2>Lizard</h2>
-  <p>Status: <strong>{{status}}</strong></p>
 
   {{#if isMissing}}
     <p>Summary input is missing</p>
