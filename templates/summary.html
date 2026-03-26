@@ -41,14 +41,14 @@
     <p>Summary input is missing</p>
   {{else}}
     <div class="summary-grid">
-      <div class="summary-item"><strong>CSV files</strong><br>{{metrics.csvFiles}}</div>
-      <div class="summary-item"><strong>Unique files</strong><br>{{metrics.uniqueFiles}}</div>
-      <div class="summary-item"><strong>Functions</strong><br>{{metrics.functionsTotal}}</div>
-      <div class="summary-item"><strong>Total NLOC</strong><br>{{metrics.nlocTotal}}</div>
+      <div class="summary-item"><strong>CSV files</strong><br>{{metrics.csvFilesFormatted}}</div>
+      <div class="summary-item"><strong>Unique files</strong><br>{{metrics.uniqueFilesFormatted}}</div>
+      <div class="summary-item"><strong>Functions</strong><br>{{metrics.functionsTotalFormatted}}</div>
+      <div class="summary-item"><strong>Total NLOC</strong><br>{{metrics.nlocTotalFormatted}}</div>
       <div class="summary-item"><strong>Average CCN</strong><br>{{metrics.averageCcn}}</div>
-      <div class="summary-item"><strong>Max CCN</strong><br>{{metrics.maxCcn}}</div>
+      <div class="summary-item"><strong>Max CCN</strong><br>{{metrics.maxCcnFormatted}}</div>
       <div class="summary-item"><strong>Average length</strong><br>{{metrics.averageLength}}</div>
-      <div class="summary-item"><strong>Max length</strong><br>{{metrics.maxLength}}</div>
+      <div class="summary-item"><strong>Max length</strong><br>{{metrics.maxLengthFormatted}}</div>
       <div class="summary-item"><strong>Generated at</strong><br>{{generatedAt}}</div>
     </div>
 
@@ -69,9 +69,9 @@
             <tr>
               <td>{{this.function}}</td>
               <td>{{this.file}}</td>
-              <td>{{this.ccn}}</td>
-              <td>{{this.nloc}}</td>
-              <td>{{this.length}}</td>
+              <td>{{this.ccnFormatted}}</td>
+              <td>{{this.nlocFormatted}}</td>
+              <td>{{this.lengthFormatted}}</td>
             </tr>
           {{/each}}
         {{else}}

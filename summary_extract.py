@@ -244,15 +244,14 @@ def _create_summary_payload(
     markdown_lines = [
         '## Lizard',
         '',
-        f'- Status: {status}',
-        f'- CSV files: {len(csv_files)}',
-        f'- Unique files analyzed: {len(unique_files)}',
-        f'- Functions analyzed: {functions_total}',
-        f'- Total NLOC: {nloc_total}',
+        f'- CSV files: {_format_int(len(csv_files))}',
+        f'- Unique files analyzed: {_format_int(len(unique_files))}',
+        f'- Functions analyzed: {_format_int(functions_total)}',
+        f'- Total NLOC: {_format_int(nloc_total)}',
         f'- Average CCN: {average_ccn}',
-        f'- Max CCN: {max_ccn}',
+        f'- Max CCN: {_format_int(max_ccn)}',
         f'- Average length: {average_length}',
-        f'- Max length: {max_length}',
+        f'- Max length: {_format_int(max_length)}',
         '',
         '### Top Complex Functions',
         '',
@@ -265,25 +264,31 @@ def _create_summary_payload(
     else:
         for row in top_functions:
             markdown_lines.append(
-                f"| {row.get('function', 'unknown')} | {row.get('file', 'unknown')} | {row.get('ccn', 0)} | "
-                f"{row.get('nloc', 0)} | {row.get('length', 0)} |"
+                f"| {row.get('function', 'unknown')} | {row.get('file', 'unknown')} | {_format_int(int(row.get('ccn', 0)))} | "
+                f"{_format_int(int(row.get('nloc', 0)))} | {_format_int(int(row.get('length', 0)))} |"
             )
 
     template_model = {
-        'status': status,
-        'statusClass': _to_status_class(status),
         'generatedAt': generated_at,
         'metrics': {
-            'csvFiles': len(csv_files),
-            'uniqueFiles': len(unique_files),
-            'functionsTotal': functions_total,
-            'nlocTotal': nloc_total,
+            'csvFilesFormatted': _format_int(len(csv_files)),
+            'uniqueFilesFormatted': _format_int(len(unique_files)),
+            'functionsTotalFormatted': _format_int(functions_total),
+            'nlocTotalFormatted': _format_int(nloc_total),
             'averageCcn': average_ccn,
-            'maxCcn': max_ccn,
+            'maxCcnFormatted': _format_int(max_ccn),
             'averageLength': average_length,
-            'maxLength': max_length,
+            'maxLengthFormatted': _format_int(max_length),
         },
-        'topFunctions': top_functions,
+        'topFunctions': [
+            {
+                **row,
+                'ccnFormatted': _format_int(int(row.get('ccn', 0))),
+                'nlocFormatted': _format_int(int(row.get('nloc', 0))),
+                'lengthFormatted': _format_int(int(row.get('length', 0))),
+            }
+            for row in top_functions
+        ],
     }
 
     return {
@@ -301,8 +306,12 @@ def _format_average(total: int, count: int) -> str:
 
     average = float(total) / float(count)
     if average.is_integer():
-        return str(int(average))
-    return f'{average:.2f}'.rstrip('0').rstrip('.')
+        return _format_int(int(average))
+    return f'{average:,.2f}'.rstrip('0').rstrip('.')
+
+
+def _format_int(value: int) -> str:
+    return f'{value:,}'
 
 
 def _resolve_status(csv_count: int, has_data_quality_issues: bool) -> str:
@@ -315,13 +324,3 @@ def _resolve_status(csv_count: int, has_data_quality_issues: bool) -> str:
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-
-
-def _to_status_class(status: str) -> str:
-    if status == 'success':
-        return 'status-success'
-    if status == 'partial':
-        return 'status-warning'
-    if status == 'failed':
-        return 'status-error'
-    return 'status-unknown'
