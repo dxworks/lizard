@@ -52,30 +52,36 @@
       <div class="summary-item"><strong>Generated at</strong><br>{{generatedAt}}</div>
     </div>
 
-    <h3>Top Complex Functions</h3>
+    <h3>Metrics by Technology</h3>
     <table>
       <thead>
         <tr>
-          <th>Function</th>
-          <th>File</th>
-          <th>CCN</th>
-          <th>NLOC</th>
-          <th>Length</th>
+          <th>Technology</th>
+          <th>Files</th>
+          <th>Functions</th>
+          <th>Total NLOC</th>
+          <th>Avg CCN</th>
+          <th>Max CCN</th>
+          <th>Avg Length</th>
+          <th>Max Length</th>
         </tr>
       </thead>
       <tbody>
-        {{#if topFunctions}}
-          {{#each topFunctions}}
+        {{#if technologyRows}}
+          {{#each technologyRows}}
             <tr>
-              <td>{{this.function}}</td>
-              <td>{{this.file}}</td>
-              <td>{{this.ccnFormatted}}</td>
+              <td>{{this.technology}}</td>
+              <td>{{this.filesFormatted}}</td>
+              <td>{{this.functionsFormatted}}</td>
               <td>{{this.nlocFormatted}}</td>
-              <td>{{this.lengthFormatted}}</td>
+              <td>{{this.averageCcn}}</td>
+              <td>{{this.maxCcnFormatted}}</td>
+              <td>{{this.averageLength}}</td>
+              <td>{{this.maxLengthFormatted}}</td>
             </tr>
           {{/each}}
         {{else}}
-          <tr><td colspan="5">No function metrics available.</td></tr>
+          <tr><td colspan="8">No technology metrics available.</td></tr>
         {{/if}}
       </tbody>
     </table>

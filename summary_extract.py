@@ -16,7 +16,7 @@ class ParsedLizardCsv:
     length_total: int
     max_ccn: int
     max_length: int
-    top_functions: list[dict[str, Any]]
+    technology_metrics: dict[str, dict[str, Any]]
     had_parse_failure: bool
     invalid_rows: int
 
@@ -36,7 +36,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
             length_total=0,
             max_ccn=0,
             max_length=0,
-            top_functions=[],
+            technology_rows=[],
             has_data_quality_issues=True,
         )
 
@@ -56,7 +56,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
     length_total = 0
     max_ccn = 0
     max_length = 0
-    top_functions: list[dict[str, Any]] = []
+    technology_metrics: dict[str, dict[str, Any]] = {}
     had_parse_failures = False
     invalid_rows_total = 0
 
@@ -72,9 +72,9 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
         invalid_rows_total += parsed.invalid_rows
         had_parse_failures = had_parse_failures or parsed.had_parse_failure
 
-        top_functions.extend(parsed.top_functions)
+        _merge_technology_metrics(technology_metrics, parsed.technology_metrics)
 
-    top_functions = _pick_top_functions(top_functions, limit=10)
+    technology_rows = _build_technology_rows(technology_metrics)
     has_data_quality_issues = had_parse_failures or invalid_rows_total > 0 or functions_total == 0
 
     return _create_summary_payload(
@@ -86,7 +86,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
         length_total=length_total,
         max_ccn=max_ccn,
         max_length=max_length,
-        top_functions=top_functions,
+        technology_rows=technology_rows,
         has_data_quality_issues=has_data_quality_issues,
     )
 
@@ -99,7 +99,7 @@ def _parse_lizard_csv(file_path: Path) -> ParsedLizardCsv:
     length_total = 0
     max_ccn = 0
     max_length = 0
-    top_functions: list[dict[str, Any]] = []
+    technology_metrics: dict[str, dict[str, Any]] = {}
     had_parse_failure = False
     invalid_rows = 0
 
@@ -117,7 +117,7 @@ def _parse_lizard_csv(file_path: Path) -> ParsedLizardCsv:
                     length_total=0,
                     max_ccn=0,
                     max_length=0,
-                    top_functions=[],
+                    technology_metrics={},
                     had_parse_failure=True,
                     invalid_rows=0,
                 )
@@ -149,16 +149,27 @@ def _parse_lizard_csv(file_path: Path) -> ParsedLizardCsv:
                 if file_value:
                     unique_files.add(file_value)
 
-                top_functions.append(
-                    {
-                        'function': function_name or 'unknown',
-                        'file': file_value or 'unknown',
-                        'location': location_value or 'unknown',
-                        'ccn': ccn_value,
-                        'nloc': nloc_value,
-                        'length': length_value,
+                technology = _detect_technology(file_value)
+                if technology not in technology_metrics:
+                    technology_metrics[technology] = {
+                        'files': set(),
+                        'functions': 0,
+                        'nloc_total': 0,
+                        'ccn_total': 0,
+                        'length_total': 0,
+                        'max_ccn': 0,
+                        'max_length': 0,
                     }
-                )
+
+                technology_entry = technology_metrics[technology]
+                if file_value:
+                    technology_entry['files'].add(file_value)
+                technology_entry['functions'] += 1
+                technology_entry['nloc_total'] += nloc_value
+                technology_entry['ccn_total'] += ccn_value
+                technology_entry['length_total'] += length_value
+                technology_entry['max_ccn'] = max(technology_entry['max_ccn'], ccn_value)
+                technology_entry['max_length'] = max(technology_entry['max_length'], length_value)
     except Exception:
         had_parse_failure = True
 
@@ -170,7 +181,7 @@ def _parse_lizard_csv(file_path: Path) -> ParsedLizardCsv:
         length_total=length_total,
         max_ccn=max_ccn,
         max_length=max_length,
-        top_functions=_pick_top_functions(top_functions, limit=10),
+        technology_metrics=technology_metrics,
         had_parse_failure=had_parse_failure,
         invalid_rows=invalid_rows,
     )
@@ -199,17 +210,65 @@ def _resolve_column_indexes(header: list[str] | None) -> dict[str, int] | None:
     return indexes
 
 
-def _pick_top_functions(candidates: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    ordered = sorted(
-        candidates,
-        key=lambda item: (
-            -int(item.get('ccn', 0)),
-            -int(item.get('nloc', 0)),
-            -int(item.get('length', 0)),
-            str(item.get('function', '')),
-        ),
-    )
-    return ordered[:limit]
+def _detect_technology(file_path_value: str) -> str:
+    extension = Path(file_path_value).suffix.lower()
+    return extension if extension else 'Other'
+
+
+def _merge_technology_metrics(
+    aggregate: dict[str, dict[str, Any]],
+    parsed: dict[str, dict[str, Any]],
+) -> None:
+    for technology, values in parsed.items():
+        if technology not in aggregate:
+            aggregate[technology] = {
+                'files': set(),
+                'functions': 0,
+                'nloc_total': 0,
+                'ccn_total': 0,
+                'length_total': 0,
+                'max_ccn': 0,
+                'max_length': 0,
+            }
+
+        target = aggregate[technology]
+        target['files'].update(values.get('files', set()))
+        target['functions'] += int(values.get('functions', 0))
+        target['nloc_total'] += int(values.get('nloc_total', 0))
+        target['ccn_total'] += int(values.get('ccn_total', 0))
+        target['length_total'] += int(values.get('length_total', 0))
+        target['max_ccn'] = max(int(target['max_ccn']), int(values.get('max_ccn', 0)))
+        target['max_length'] = max(int(target['max_length']), int(values.get('max_length', 0)))
+
+
+def _build_technology_rows(technology_metrics: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+
+    for technology, values in technology_metrics.items():
+        functions_count = int(values.get('functions', 0))
+        nloc_total = int(values.get('nloc_total', 0))
+        ccn_total = int(values.get('ccn_total', 0))
+        length_total = int(values.get('length_total', 0))
+        max_ccn = int(values.get('max_ccn', 0))
+        max_length = int(values.get('max_length', 0))
+        files_count = len(values.get('files', set()))
+
+        rows.append(
+            {
+                'technology': technology,
+                'filesFormatted': _format_int(files_count),
+                'functionsFormatted': _format_int(functions_count),
+                'nlocFormatted': _format_int(nloc_total),
+                'averageCcn': _format_average(ccn_total, functions_count),
+                'maxCcnFormatted': _format_int(max_ccn),
+                'averageLength': _format_average(length_total, functions_count),
+                'maxLengthFormatted': _format_int(max_length),
+                'nlocRaw': nloc_total,
+            }
+        )
+
+    rows.sort(key=lambda row: (-int(row['nlocRaw']), str(row['technology']).lower()))
+    return rows
 
 
 def _create_summary_payload(
@@ -221,7 +280,7 @@ def _create_summary_payload(
     length_total: int,
     max_ccn: int,
     max_length: int,
-    top_functions: list[dict[str, Any]],
+    technology_rows: list[dict[str, Any]],
     has_data_quality_issues: bool,
 ) -> dict[str, Any]:
     generated_at = _iso_now()
@@ -253,19 +312,20 @@ def _create_summary_payload(
         f'- Average length: {average_length}',
         f'- Max length: {_format_int(max_length)}',
         '',
-        '### Top Complex Functions',
+        '### Metrics by Technology',
         '',
-        '| Function | File | CCN | NLOC | Length |',
-        '| --- | --- | ---: | ---: | ---: |',
+        '| Technology | Files | Functions | Total NLOC | Avg CCN | Max CCN | Avg Length | Max Length |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ]
 
-    if not top_functions:
-        markdown_lines.append('| _none_ | _none_ | 0 | 0 | 0 |')
+    if not technology_rows:
+        markdown_lines.append('| _none_ | 0 | 0 | 0 | 0 | 0 | 0 | 0 |')
     else:
-        for row in top_functions:
+        for row in technology_rows:
             markdown_lines.append(
-                f"| {row.get('function', 'unknown')} | {row.get('file', 'unknown')} | {_format_int(int(row.get('ccn', 0)))} | "
-                f"{_format_int(int(row.get('nloc', 0)))} | {_format_int(int(row.get('length', 0)))} |"
+                f"| {row.get('technology', 'Other')} | {row.get('filesFormatted', '0')} | {row.get('functionsFormatted', '0')} | "
+                f"{row.get('nlocFormatted', '0')} | {row.get('averageCcn', '0')} | {row.get('maxCcnFormatted', '0')} | "
+                f"{row.get('averageLength', '0')} | {row.get('maxLengthFormatted', '0')} |"
             )
 
     template_model = {
@@ -280,15 +340,7 @@ def _create_summary_payload(
             'averageLength': average_length,
             'maxLengthFormatted': _format_int(max_length),
         },
-        'topFunctions': [
-            {
-                **row,
-                'ccnFormatted': _format_int(int(row.get('ccn', 0))),
-                'nlocFormatted': _format_int(int(row.get('nloc', 0))),
-                'lengthFormatted': _format_int(int(row.get('length', 0))),
-            }
-            for row in top_functions
-        ],
+        'technologyRows': technology_rows,
     }
 
     return {
