@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from lizard_languages import get_reader_for
 
 
 @dataclass(frozen=True)
@@ -211,8 +212,54 @@ def _resolve_column_indexes(header: list[str] | None) -> dict[str, int] | None:
 
 
 def _detect_technology(file_path_value: str) -> str:
-    extension = Path(file_path_value).suffix.lower()
-    return extension if extension else 'Other'
+    if not file_path_value:
+        return 'Other'
+
+    reader = get_reader_for(file_path_value)
+    if reader is None:
+        return 'Other'
+
+    language_names = getattr(reader, 'language_names', [])
+    if not language_names:
+        return 'Other'
+
+    return _format_language_name(str(language_names[0]))
+
+
+def _format_language_name(language_name: str) -> str:
+    normalized = language_name.strip().lower()
+
+    aliases = {
+        'cpp': 'C/C++',
+        'c': 'C/C++',
+        'csharp': 'C#',
+        'javascript': 'JavaScript',
+        'js': 'JavaScript',
+        'typescript': 'TypeScript',
+        'objectivec': 'Objective-C',
+        'objective-c': 'Objective-C',
+        'objc': 'Objective-C',
+        'gdscript': 'GDScript',
+        'go': 'Go',
+        'java': 'Java',
+        'kotlin': 'Kotlin',
+        'python': 'Python',
+        'php': 'PHP',
+        'ruby': 'Ruby',
+        'swift': 'Swift',
+        'scala': 'Scala',
+        'rust': 'Rust',
+        'lua': 'Lua',
+        'fortran': 'Fortran',
+        'tnsdl': 'TNSDL',
+        'ttcn': 'TTCN',
+        'ttcn3': 'TTCN',
+    }
+
+    if normalized in aliases:
+        return aliases[normalized]
+
+    return language_name.strip() or 'Other'
 
 
 def _merge_technology_metrics(
@@ -283,13 +330,11 @@ def _create_summary_payload(
     technology_rows: list[dict[str, Any]],
     has_data_quality_issues: bool,
 ) -> dict[str, Any]:
-    generated_at = _iso_now()
     average_ccn = _format_average(ccn_total, functions_total)
     average_length = _format_average(length_total, functions_total)
     status = _resolve_status(csv_count=len(csv_files), has_data_quality_issues=has_data_quality_issues)
 
     metadata = {
-        'metadata.csv.files': len(csv_files),
         'metadata.files.unique': len(unique_files),
         'metadata.functions.total': functions_total,
         'metadata.nloc.total': nloc_total,
@@ -297,20 +342,22 @@ def _create_summary_payload(
         'metadata.ccn.max': max_ccn,
         'metadata.length.average': average_length,
         'metadata.length.max': max_length,
-        'metadata.generated.at': generated_at,
     }
 
     markdown_lines = [
         '## Lizard',
         '',
-        f'- CSV files: {_format_int(len(csv_files))}',
-        f'- Unique files analyzed: {_format_int(len(unique_files))}',
-        f'- Functions analyzed: {_format_int(functions_total)}',
-        f'- Total NLOC: {_format_int(nloc_total)}',
-        f'- Average CCN: {average_ccn}',
-        f'- Max CCN: {_format_int(max_ccn)}',
-        f'- Average length: {average_length}',
-        f'- Max length: {_format_int(max_length)}',
+        (
+            f'- NLOC: {_format_int(nloc_total)} / '
+            f'Unique files: {_format_int(len(unique_files))} / '
+            f'Functions: {_format_int(functions_total)}'
+        ),
+        (
+            f'- Average CCN: {average_ccn} / '
+            f'Max CCN: {_format_int(max_ccn)} / '
+            f'Average length: {average_length} / '
+            f'Max length: {_format_int(max_length)}'
+        ),
         '',
         '### Metrics by Technology',
         '',
@@ -329,9 +376,7 @@ def _create_summary_payload(
             )
 
     template_model = {
-        'generatedAt': generated_at,
         'metrics': {
-            'csvFilesFormatted': _format_int(len(csv_files)),
             'uniqueFilesFormatted': _format_int(len(unique_files)),
             'functionsTotalFormatted': _format_int(functions_total),
             'nlocTotalFormatted': _format_int(nloc_total),
@@ -372,22 +417,3 @@ def _resolve_status(csv_count: int, has_data_quality_issues: bool) -> str:
     if has_data_quality_issues:
         return 'partial'
     return 'success'
-
-
-def _iso_now() -> str:
-    local_now = datetime.now().astimezone()
-    return f"{local_now.strftime('%Y-%m-%d %H:%M:%S')} {_format_gmt_offset(local_now.strftime('%z'))}"
-
-
-def _format_gmt_offset(offset: str) -> str:
-    if len(offset) != 5:
-        return 'GMT+0'
-
-    sign = offset[0]
-    hours = int(offset[1:3])
-    minutes = int(offset[3:5])
-
-    if minutes == 0:
-        return f'GMT{sign}{hours}'
-
-    return f'GMT{sign}{hours}:{minutes:02d}'
