@@ -1,0 +1,38 @@
+name: Lizard
+id: lizard
+version: 1.19.2
+
+actions:
+  start:
+    commands:
+      run-lizard:
+        id: run-lizard
+        dir: ${instrumentPath}
+        command:
+          windows: >-
+            python lizard.py -V --csv "${repo}" > "${instrumentPath}/results/${repoName}.csv"
+          unix: >-
+            python lizard.py -V --csv "${repo}" > "${instrumentPath}/results/${repoName}.csv"
+
+  summary:
+    md-file: results/summary.md
+    html-file: results/summary.html
+    category: Structural Relations
+    commands:
+      generate-summary:
+        id: generate-summary
+        dir: ${instrumentPath}
+        command:
+          windows: py -3 lizard-summary.py "${instrumentPath}/results"
+          unix: python3 lizard-summary.py "${instrumentPath}/results"
+
+  clean:
+    with:
+      locations:
+        - source: ${instrumentDir}/results
+
+  pack:
+    with:
+      locations:
+        - source: ${instrumentDir}/results
+          destination: /results
