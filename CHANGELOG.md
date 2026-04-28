@@ -1,5 +1,97 @@
 # Change Log
 
+## Unreleased
+
+## 1.22.1
+
+### Bug Fixes
+- TypeScript: prevent `IndexError` when parsing nested template literals (issue #471, PR #472)
+
+## 1.22.0
+
+### Improvements
+- **TypeScript, TSX, and JSX** — parsing and metrics are much closer to real code (PRs #467, #468):
+  - **TSX/JSX** use the same `TypeScriptStates` path as `.ts` (tokenizer-only layer for JSX), so **class methods** and **CCN** are no longer wrong or double-counted.
+  - **Skips** that reduce false functions: `interface { … }` method signatures, `type … =` value types, `abstract` method declarations without bodies; **ES2022** private names `#foo` in tokenization; **smarter parameters** (type keyword noise, commas inside `Map<…>`, etc.).
+  - **Class field arrows** (`handleClick = () => {}`) are reported under the **field name** instead of `(anonymous)`; better **call vs definition** and class-body cases (typed fields, `static` / `async` fields, LWC-style `async x =>` fields, `field = CONST.PROP;`, JSX attribute expressions).
+
+## 1.21.7
+
+### Bug Fixes
+- Java: treat `record` as a contextual keyword (field and method name `record` are no longer parsed as a record class); track brace depth for field array/object initializers so `= { }` does not end the class body before a `static` block (issue #470)
+
+## 1.21.6
+
+### Improvements
+- Release workflow: clarify how PyPI matches trusted publishers (repository owner id, workflow file, environment); add optional `PYPI_API_TOKEN` secret for token-based upload when OIDC is not used
+
+## 1.21.5
+
+### Improvements
+- Release workflow: publish to PyPI without a GitHub Environment so trusted publishing matches PyPI’s default GitHub publisher settings (owner, repository, `release.yml`, empty environment name)
+
+## 1.21.4
+
+### Bug Fixes
+- Fix Java parsing when a field initializer uses a class literal (`Type.class`), which could mis-parse the next method (e.g. `catch` treated as a method name) (issue #469)
+- Fix Java static initializer blocks (`static { ... }`) so control-flow keywords inside the block are not counted as methods (issue #469)
+- Fix Java double-brace anonymous classes (`new Foo() {{ ... }}`) so instance-initializer bodies are not parsed as class methods (issue #469)
+
+## 1.21.3
+
+### Bug Fixes
+- Fix Java annotations with parenthesized arguments (e.g. `@Transactional(rollbackFor = Exception.class)`) being parsed as methods and corrupting complexity (issue #463)
+
+## 1.21.2
+
+### Bug Fixes
+- Fix nesting depth calculation for C++ `else if` chains (issue #418)
+  - `else if () {}` is now treated as same nesting level as `if`, not as nested
+  - Matches behavior of similar tools and user expectations
+
+## 1.21.1
+
+### Bug Fixes
+- Fix Ruby parser hang on %i[] and %I[] symbol array literals (issue #457)
+- Fix regex in CodeReader to prevent catastrophic backtracking on multiple question marks after less than sign (issue #459)
+
+### Improvements
+- Add script directory to sys.path for running lizard.py from source (issue #460)
+
+## 1.21.0
+
+### New Features
+- Add selective metric forgiveness (issue #455)
+  - Use `#lizard forgives(length)` to forgive only specific metrics
+  - Use `#lizard forgives(length, parameter_count)` for multiple metrics
+  - `#lizard forgives` without parentheses continues to forgive all metrics (backward compatible)
+
+### Bug Fixes
+- Fix PHP parser incorrectly treating "use function" imports as function declarations (issue #442)
+  - PHP parser now correctly ignores function names in "use function" statements
+  - Function names are no longer overridden by imported function names
+- Fix Java parser incorrectly treating "record" variable names as keywords (issue #453)
+  - Java parser now correctly distinguishes between the `record` keyword and variables named "record"
+  - Variables named "record" inside method bodies are no longer misinterpreted as class declarations
+- Fix C++ lambda parsing state machine issues (issue #443)
+  - Fixed lambda capture state incorrectly transitioning to global state instead of parameter parsing
+  - Added proper bracket tracking for lambda parameter lists and bodies
+  - Improved handling of nested brackets within lambda expressions
+  - Added support for lambda qualifiers (mutable, noexcept, constexpr, consteval)
+  - Added test case for multiple functions with static_cast expressions
+
+## 1.20.0
+
+### Bug Fixes
+- Fix IndexError crash when parsing C++ raw string literals containing braces (issue #451)
+  - Added proper tokenization for C++ raw string literals (R"delimiter(content)delimiter")
+  - Enhanced lizardns extension with defensive invariant protection
+  - Prevents misinterpretation of braces within string literals as structural elements
+
+### Improvements
+- Improved robustness of nested structures counting extension
+- Better error handling for edge cases in tokenization
+
 ## 1.19.0
 
 ### New Features

@@ -35,6 +35,27 @@ public String funcB() {
         result = get_java_function_list("@abc() void fun() throws e1, e2{}")
         self.assertEqual(1, len(result))
 
+    def test_transactional_rollback_for_annotation_issue_463(self):
+        """@Transactional(rollbackFor = Exception.class) must not parse inner names as methods."""
+        code = """
+public class LizardTest {
+    @Transactional(rollbackFor = Exception.class)
+    public void test1() {
+        List<String> list = new ArrayList<>();
+        if (CollectionUtils.isNotEmpty(list)) {
+            list.add("test");
+        }
+        for (String str : list) {
+            System.out.println(str);
+        }
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("LizardTest::test1", result[0].name)
+        self.assertEqual(3, result[0].cyclomatic_complexity)
+
     def test_class_with_decorator(self):
         result = get_java_function_list("@abc() class funxx{ }")
         self.assertEqual(0, len(result))
@@ -78,6 +99,19 @@ public String funcB() {
         self.assertEqual(1, len(result))
         self.assertEqual("A", result[0].name)
         self.assertEqual(1, result[0].cyclomatic_complexity)
+
+    def test_many_question_marks_after_less_than_no_freeze(self):
+        """Issue #459: Multiple ? after < causes catastrophic backtracking and freeze"""
+        code = """
+public void test() {
+    List<String> list = new ArrayList<>();
+    boolean b = list.size() < 10;
+    String str = "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("test", result[0].name)
 
     def test_record(self):
         result = get_java_function_list("""
@@ -483,3 +517,169 @@ public class TestWildcard {
                 1, func.cyclomatic_complexity,
                 f"Function {func.name} should have CCN=1, got "
                 f"{func.cyclomatic_complexity}")
+
+    def test_issue_469_field_class_literal_does_not_break_catch(self):
+        """Issue #469: Foo.class in a field initializer must not let 'catch' be parsed as a method."""
+        code = """
+public class A {
+    private String x = A.class.getName();
+    public void m() {
+        try {} catch (Exception e) {}
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("A::m", result[0].name)
+
+    def test_issue_469_static_initializer_block(self):
+        """Issue #469: static { ... } must not treat if/while/for/switch as methods."""
+        code = """
+public class A {
+    static {
+        if (true) {}
+        while (false) {}
+        for (int i = 0; i < 1; i++) {}
+        switch (0) {}
+    }
+    void m() {}
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("A::m", result[0].name)
+
+    def test_issue_469_double_brace_anonymous_initializer(self):
+        """Issue #469: new Type() {{ ... }} instance initializer must not add spurious methods."""
+        code = """
+import java.util.*;
+public class A {
+    Map<String, String> abc(String key) {
+        if (key != null) {
+            return new HashMap() {
+                {
+                    put("res_code", "1");
+                }
+            };
+        }
+        return null;
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("A::abc", result[0].name)
+
+    def test_issue_470_static_block_after_field_with_brace_initializer(self):
+        """Issue #470 bug1: static {...} after a field with `= {};` must not leak as a method."""
+        code = """
+public class LizardTest {
+    private String[] unixCmd = {};
+    static {
+        if (true) {
+        }
+    }
+    public void test1() {}
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("LizardTest::test1", result[0].name)
+
+    def test_issue_470_record_as_field_name_followed_by_annotated_method(self):
+        """Issue #470 bug2: a field named `record` must not swallow the following method."""
+        code = """
+public class LizardTest {
+    private String record;
+
+    @Transactional(rollbackFor = Exception.class)
+    public void test1() {
+        List<String> list = new ArrayList<>();
+        if (CollectionUtils.isNotEmpty(list)) {
+            list.add("test");
+        }
+        for (String str : list) {
+            System.out.println(str);
+        }
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("LizardTest::test1", result[0].name)
+        self.assertEqual(3, result[0].cyclomatic_complexity)
+
+    def test_issue_470_method_named_record(self):
+        """Issue #470 bug3: a method named `record` must be detected correctly."""
+        code = """
+public class LizardTest {
+    private String record(String name) {
+        if (name.equals("a")) {
+        }
+        for (int i = 0; i < 10; i++) {
+        }
+        return "";
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual("LizardTest::record", result[0].name)
+        self.assertEqual(3, result[0].cyclomatic_complexity)
+
+    def test_issue_470_full_example(self):
+        """Issue #470: the exact snippet from the bug report must report exactly two methods."""
+        code = """
+public class LizardTest {
+    private String[] unixCmd = {};
+    static {
+        if (true) {
+        }
+    }
+
+    private String record;
+
+    @Transactional(rollbackFor = Exception.class)
+    public void test1() {
+        List<String> list = new ArrayList<>();
+        if (CollectionUtils.isNotEmpty(list)) {
+            list.add("test");
+        }
+        for (String str : list) {
+            System.out.println(str);
+        }
+    }
+
+    private String record(String name) {
+        if (name.equals("a")) {
+
+        }
+        for (int i = 0; i < 10; i++) {
+
+        }
+        return "";
+    }
+}
+"""
+        result = get_java_function_list(code)
+        names = sorted(f.name for f in result)
+        self.assertEqual(["LizardTest::record", "LizardTest::test1"], names)
+
+    def test_record_as_variable_name(self):
+        """Test for issue #453: 'record' as variable name should not be treated as record keyword"""
+        code = """
+public class Example {
+    public void process() {
+        String record = "test";
+        System.out.println(record);
+    }
+    
+    public void anotherMethod() {
+        System.out.println("hello");
+    }
+}
+"""
+        result = get_java_function_list(code)
+        self.assertEqual(2, len(result))
+        self.assertEqual("Example::process", result[0].name)
+        self.assertEqual("Example::anotherMethod", result[1].name)
