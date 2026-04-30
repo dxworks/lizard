@@ -110,3 +110,68 @@ class TestIgnoreFile(unittest.TestCase):
             'lib/util.py',
             'Form1.cs',
         ])
+
+    @patch.object(os.path, "exists")
+    @patch.object(os.path, "relpath")
+    @patch.object(os, "walk")
+    @patch("lizard.auto_read")
+    def test_ignore_file_supports_bracket_character_classes(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
+        self._setup_mocks(mock_exists, mock_relpath)
+        mock_os_walk.return_value = (['.',
+                                    None,
+                                    [
+                                        'static/jquery-3.6.0.js',          # ignored: matches [0-9]
+                                        'static/jquery-ui-1.12.1.js',      # ignored: matches [0-9]
+                                        'static/bootstrap-5.3.0.min.css',  # ignored: matches [0-9]
+                                        'static/jquery.js',                # kept (no version digits)
+                                        'src/main.js',                     # kept
+                                    ]], )
+        mock_auto_read.return_value = (
+            "**/jquery*-[0-9]*.js\n"
+            "**/jquery-ui-[0-9]*.js\n"
+            "**/bootstrap*-[0-9]*.min.css\n"
+        )
+
+        files = get_all_source_files(["dir"], [], [])
+        self._assert_files(files, [
+            'static/jquery.js',
+            'src/main.js',
+        ])
+
+    @patch.object(os.path, "exists")
+    @patch.object(os.path, "relpath")
+    @patch.object(os, "walk")
+    @patch("lizard.auto_read")
+    def test_ignore_file_supports_negated_bracket_class(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
+        self._setup_mocks(mock_exists, mock_relpath)
+        mock_os_walk.return_value = (['.',
+                                    None,
+                                    [
+                                        'a.cs',  # ignored: 'a' is not a digit
+                                        'b.cs',  # ignored
+                                        '1.cs',  # kept: '1' is a digit
+                                    ]], )
+        # gitignore-style negation: [!0-9] means "not a digit"
+        mock_auto_read.return_value = "**/[!0-9].cs\n"
+
+        files = get_all_source_files(["dir"], [], [])
+        self._assert_files(files, ['1.cs'])
+
+    @patch.object(os.path, "exists")
+    @patch.object(os.path, "relpath")
+    @patch.object(os, "walk")
+    @patch("lizard.auto_read")
+    def test_ignore_file_supports_multiple_bracket_classes_in_one_pattern(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
+        self._setup_mocks(mock_exists, mock_relpath)
+        mock_os_walk.return_value = (['.',
+                                    None,
+                                    [
+                                        'src/a1.cs',  # ignored: [ab][0-9]
+                                        'src/b9.cs',  # ignored: [ab][0-9]
+                                        'src/c1.cs',  # kept: 'c' not in [ab]
+                                        'src/aa.cs',  # kept: 'a' not in [0-9]
+                                    ]], )
+        mock_auto_read.return_value = "**/[ab][0-9].cs\n"
+
+        files = get_all_source_files(["dir"], [], [])
+        self._assert_files(files, ['src/c1.cs', 'src/aa.cs'])

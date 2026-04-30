@@ -12,7 +12,8 @@ import sys
 def _translate_pattern(pattern):
     '''
     Translate a gitignore-style glob pattern into a regex string.
-    Supports the subset used in .ignore: '**', '*', '?' and literal segments.
+    Supports the subset used in .ignore: '**', '*', '?', '[...]' character
+    classes (with gitignore '[!...]' negation), and literal segments.
     The resulting regex is anchored and also matches descendants of a matched
     directory (mimics gitignore's "ignore dir => ignore its contents" rule).
     '''
@@ -35,6 +36,20 @@ def _translate_pattern(pattern):
         elif pattern[i] == '?':
             out.append('[^/]')
             i += 1
+        elif pattern[i] == '[':
+            # Character class: copy through to regex, translating gitignore's
+            # '[!...]' negation to regex '[^...]'. Fall back to a literal '['
+            # if the bracket expression is malformed (no closing ']').
+            close = pattern.find(']', i + 1)
+            if close == -1:
+                out.append(re.escape('['))
+                i += 1
+            else:
+                body = pattern[i + 1:close]
+                if body.startswith('!'):
+                    body = '^' + body[1:]
+                out.append('[' + body + ']')
+                i = close + 1
         else:
             out.append(re.escape(pattern[i]))
             i += 1
