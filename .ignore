@@ -1,12 +1,28 @@
-**node_modules**
-**.git**
-**.Designer.cs**
-**.Designer.vb**
-**.min.js**
-**.min.ts**
+# Patterns supported by lizard's in-tree .ignore matcher
+# (see lizard_ext/ignore_filter.py):
+#   **        - any sequence of chars, including '/'
+#   *         - any sequence of non-'/' chars (single path segment)
+#   ?         - any single non-'/' char
+#   [abc]     - character class (any one of a, b, c)
+#   [a-z]     - character range
+#   [!abc]    - negated character class (gitignore syntax)
+#   # ...     - comment line (must start with '#')
+#
+# NOT supported: '!pattern' negation, leading '/' root-anchoring,
+# trailing '/' directory-only matching, '\' escapes.
+# A matched directory implicitly ignores all its descendants.
+
+**/node_modules/**
+**/.git/**
+**/*.Designer.cs
+**/*.Designer.vb
+**/*.min.js
+**/*.min.jsx
+**/*.min.ts
+**/*.min.tsx
 **/bin/Debug/**
 **/bin/Release/**
-**/bin/x64/Debug**
+**/bin/x64/Debug/**
 **/bin/x64/Release/**
 **/obj/Debug/**
 **/obj/Release/**

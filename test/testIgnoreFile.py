@@ -16,7 +16,7 @@ class TestIgnoreFile(unittest.TestCase):
         mock_exists.side_effect = exists_side_effect
         
         def relpath_side_effect(path, start):
-            if path.startswith('./'):
+            if path.startswith('./') or path.startswith('.\\'):
                 path = path[2:]
             return path.replace(os.sep, '/')
         mock_relpath.side_effect = relpath_side_effect
@@ -37,7 +37,7 @@ class TestIgnoreFile(unittest.TestCase):
         mock_os_walk.return_value = (['.',
                                     None,
                                     ['temp.c', 'node_modules/file.js', 'useful.cpp']], )
-        mock_auto_read.return_value = "**node_modules**\n"
+        mock_auto_read.return_value = "**/node_modules/**\n"
         
         files = get_all_source_files(["dir"], [], [])
         self._assert_files(files, ['temp.c', 'useful.cpp'])
@@ -51,7 +51,7 @@ class TestIgnoreFile(unittest.TestCase):
         mock_os_walk.return_value = (['.',
                                     None,
                                     ['Form1.Designer.cs', 'app.min.js', 'bin/Debug/app.exe', 'src/main.cpp', 'obj/Release/temp.o']], )
-        mock_auto_read.return_value = "**.Designer.cs**\n**.min.js**\n**/bin/Debug/**\n**/obj/Release/**\n"
+        mock_auto_read.return_value = "**/*.Designer.cs\n**/*.min.js\n**/bin/Debug/**\n**/obj/Release/**\n"
         
         files = get_all_source_files(["dir"], [], [])
         self._assert_files(files, ['src/main.cpp'])
@@ -69,15 +69,17 @@ class TestIgnoreFile(unittest.TestCase):
         mock_os_walk.return_value = (['.',
                                     None,
                                     [
-                                        'repo/node_modules/file.js',     # **node_modules**
-                                        'repo/.git/config.cs',           # **.git**
-                                        'src/Form1.Designer.cs',         # **.Designer.cs**
-                                        'src/Form1.Designer.vb',         # **.Designer.vb**
-                                        'static/app.min.js',             # **.min.js**
-                                        'static/app.min.ts',             # **.min.ts**
+                                        'repo/node_modules/file.js',     # **/node_modules/**
+                                        'repo/.git/config.cs',           # **/.git/**
+                                        'src/Form1.Designer.cs',         # **/*.Designer.cs
+                                        'src/Form1.Designer.vb',         # **/*.Designer.vb
+                                        'static/app.min.js',             # **/*.min.js
+                                        'static/app.min.jsx',            # **/*.min.jsx
+                                        'static/app.min.ts',             # **/*.min.ts
+                                        'static/app.min.tsx',            # **/*.min.tsx
                                         'proj/bin/Debug/app.cs',         # **/bin/Debug/**
                                         'proj/bin/Release/app.cs',       # **/bin/Release/**
-                                        'proj/bin/x64/Debug/file.cs',    # **/bin/x64/Debug
+                                        'proj/bin/x64/Debug/file.cs',    # **/bin/x64/Debug/**
                                         'proj/bin/x64/Release/app.cs',   # **/bin/x64/Release/**
                                         'proj/obj/Debug/temp.cpp',       # **/obj/Debug/**
                                         'proj/obj/Release/temp.cpp',     # **/obj/Release/**
@@ -88,15 +90,17 @@ class TestIgnoreFile(unittest.TestCase):
                                         'Form1.cs',                      # kept (not Designer.cs)
                                     ]], )
         mock_auto_read.return_value = (
-            "**node_modules**\n"
-            "**.git**\n"
-            "**.Designer.cs**\n"
-            "**.Designer.vb**\n"
-            "**.min.js**\n"
-            "**.min.ts**\n"
+            "**/node_modules/**\n"
+            "**/.git/**\n"
+            "**/*.Designer.cs\n"
+            "**/*.Designer.vb\n"
+            "**/*.min.js\n"
+            "**/*.min.jsx\n"
+            "**/*.min.ts\n"
+            "**/*.min.tsx\n"
             "**/bin/Debug/**\n"
             "**/bin/Release/**\n"
-            "**/bin/x64/Debug\n"
+            "**/bin/x64/Debug/**\n"
             "**/bin/x64/Release/**\n"
             "**/obj/Debug/**\n"
             "**/obj/Release/**\n"
@@ -175,3 +179,21 @@ class TestIgnoreFile(unittest.TestCase):
 
         files = get_all_source_files(["dir"], [], [])
         self._assert_files(files, ['src/c1.cs', 'src/aa.cs'])
+
+    @patch.object(os.path, "exists")
+    @patch.object(os.path, "relpath")
+    @patch.object(os, "walk")
+    @patch("lizard.auto_read")
+    def test_commented_out_patterns_are_not_applied(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
+        self._setup_mocks(mock_exists, mock_relpath)
+        # If '#temp.cs' were treated as a pattern (i.e. comment-stripping
+        # was broken), it would compile to a regex that matches the file
+        # literally named '#temp.cs'. Because the line is a comment, the
+        # file must be kept.
+        mock_os_walk.return_value = (['.',
+                                    None,
+                                    ['#temp.cs', 'src/main.cs']], )
+        mock_auto_read.return_value = "#temp.cs\n"
+
+        files = get_all_source_files(["dir"], [], [])
+        self._assert_files(files, ['#temp.cs', 'src/main.cs'])
