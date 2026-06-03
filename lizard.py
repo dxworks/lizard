@@ -54,13 +54,17 @@ for _script_dir in _script_dirs():
         sys.path.insert(0, _script_dir)
 
 
+def _report_import_error(module_name, error):
+    sys.stderr.write("Cannot import %s: %s\n" % (module_name, error))
+
+
 if sys.version[0] == '2':
     from future_builtins import map, filter  # pylint: disable=W0622, F0401
 
 try:
     from lizard_languages import languages, get_reader_for, CLikeReader
-except ImportError:
-    sys.stderr.write("Cannot find the lizard_languages module.")
+except ImportError as error:
+    _report_import_error("lizard_languages", error)
     sys.exit(2)
 try:
     from lizard_ext import version
@@ -70,8 +74,8 @@ try:
     from lizard_ext import auto_open, auto_read
     from lizard_ext import print_checkstyle
     from lizard_ext.ignore_filter import load_ignore_spec, should_ignore_file
-except ImportError:
-    sys.stderr.write("Cannot find the lizard_ext modules.")
+except ImportError as error:
+    _report_import_error("lizard_ext modules", error)
 
 DEFAULT_CCN_THRESHOLD, DEFAULT_WHITELIST, \
     DEFAULT_MAX_FUNC_LENGTH = 15, "whitelizard.txt", 1000
