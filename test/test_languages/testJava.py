@@ -31,6 +31,84 @@ public String funcB() {
         result = get_java_function_list("void fun() throws e1, e2{}")
         self.assertEqual(1, len(result))
 
+    def test_anonymous_class_in_field_initializer_issue_311(self):
+        code = """
+class T {
+    private ThreadLocal<Long> startTime = new ThreadLocal<Long>() {
+        @Override protected Long initialValue() { return 0L; }
+    };
+    void realMethod() { System.out.println("hi"); }
+}
+"""
+        result = get_java_function_list(code)
+        names = [f.name for f in result]
+        # the field declaration must not be picked up as a method
+        self.assertNotIn("T::ThreadLocal<Long>", names)
+        # the anonymous class's real method should be counted
+        self.assertIn("(anonymous)::initialValue", names)
+        self.assertIn("T::realMethod", names)
+
+    def test_generic_anonymous_class_in_method_body(self):
+        code = """
+class T {
+    void m() {
+        ThreadLocal<Long> x = new ThreadLocal<Long>() {
+            protected Long initialValue() { return 0L; }
+        };
+    }
+}
+"""
+        result = get_java_function_list(code)
+        names = [f.name for f in result]
+        self.assertIn("T::m", names)
+        self.assertIn("(anonymous)::initialValue", names)
+
+    def test_nested_generic_anonymous_class(self):
+        code = """
+class T {
+    private Map<String, List<Long>> m = new HashMap<String, List<Long>>() {
+        public int customSize() { if (isEmpty()) return 0; return 1; }
+    };
+    void realOuter() {}
+}
+"""
+        result = get_java_function_list(code)
+        names = [f.name for f in result]
+        self.assertEqual(2, len(result))
+        self.assertIn("(anonymous)::customSize", names)
+        self.assertIn("T::realOuter", names)
+
+    def test_wildcard_generic_anonymous_class(self):
+        code = """
+class T {
+    void m() {
+        Comparator<? super String> c = new Comparator<? super String>() {
+            public int compare(String a, String b) { return 0; }
+        };
+    }
+}
+"""
+        result = get_java_function_list(code)
+        names = [f.name for f in result]
+        self.assertIn("T::m", names)
+        self.assertIn("(anonymous)::compare", names)
+
+    def test_qualified_type_anonymous_class(self):
+        code = """
+class T {
+    private java.util.Map<String, String> m = new java.util.HashMap<String, String>() {
+        public int customSize() { return size(); }
+    };
+    void realOuter() {}
+}
+"""
+        result = get_java_function_list(code)
+        names = [f.name for f in result]
+        self.assertEqual(2, len(result))
+        self.assertNotIn("T::HashMap<String,String>", names)
+        self.assertIn("(anonymous)::customSize", names)
+        self.assertIn("T::realOuter", names)
+
     def test_function_with_decorator(self):
         result = get_java_function_list("@abc() void fun() throws e1, e2{}")
         self.assertEqual(1, len(result))
@@ -683,3 +761,34 @@ public class Example {
         self.assertEqual(2, len(result))
         self.assertEqual("Example::process", result[0].name)
         self.assertEqual("Example::anotherMethod", result[1].name)
+
+    def test_issue_470_record_name_and_static_init(self):
+        """Issue #470: 'record' as field or method; static/annotation must not add bogus functions."""
+        code = """
+import java.util.List;
+public class LizardTest {
+    private String[] unixCmd = {};
+    static {
+        if (true) {
+        }
+    }
+    private String record;
+    @Transactional(rollbackFor = Exception.class)
+    public void test1() {
+        List<String> list = new java.util.ArrayList<>();
+    }
+    private String record(String name) {
+        if (name.equals("a")) {
+        }
+        for (int i = 0; i < 10; i++) {
+        }
+        return "";
+    }
+}
+"""
+        result = get_java_function_list(code)
+        names = sorted(f.name for f in result)
+        self.assertEqual(
+            ["LizardTest::record", "LizardTest::test1"],
+            names,
+        )
