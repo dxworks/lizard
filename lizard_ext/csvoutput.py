@@ -17,57 +17,57 @@ due to the nature of CSV outputs. The differences are:
 """
 
 
+def _extension_columns(extensions):
+    """Collect FUNCTION_INFO field names and captions, in extension order."""
+    variables = []
+    captions = []
+    for extension in extensions:
+        if not hasattr(extension, "FUNCTION_INFO"):
+            continue
+        for name, info in extension.FUNCTION_INFO.items():
+            variables.append(name)
+            captions.append(info.get("caption", "No_caption"))
+    return variables, captions
+
+
 def csv_output(result, options):
     result = result.result
-
-    extension_variables = []
-    extension_captions = []
-    for extension in options.extensions:
-        if extension.__class__.__name__ == 'LizardExtension':
-            if hasattr(extension, 'FUNCTION_INFO') and \
-                    len(list(extension.FUNCTION_INFO)) == 1:
-                extension_variable = list(extension.FUNCTION_INFO)[0]
-                extension_variables.append(extension_variable)
-                var_extension = extension.FUNCTION_INFO[extension_variable]
-                extension_caption = var_extension['caption'] \
-                    if 'caption' in var_extension else 'No_caption'
-                extension_captions.append(extension_caption)
+    extension_variables, extension_captions = _extension_columns(
+        options.extensions)
 
     if options.verbose:
-        extension_caption = ""
-        for caption in extension_captions:
-            extension_caption = f"{extension_caption},{caption}"
-        print(f"NLOC,CCN,token,PARAM,length,location,file,function," +
-              f"long_name,start,end{extension_caption}")
+        print(",".join([
+            "NLOC", "CCN", "token", "PARAM", "length", "location", "file",
+            "function", "long_name", "start", "end",
+        ] + extension_captions))
 
     for source_file in result:
-        if source_file:
-            for source_function in source_file.function_list:
-                if source_function:
-                    extension_string = ''
-                    for variable in extension_variables:
-                        extension_string = '{},{}'. \
-                            format(extension_string,
-                                   source_function.__getattribute__(variable))
-                    try:
-                        line = '{},{},{},{},{},"{}","{}","{}","{}",{},{}{}'.format(
-                            source_function.nloc,
-                            source_function.cyclomatic_complexity,
-                            source_function.token_count,
-                            len(source_function.parameters),
-                            source_function.length,
-                            "{}@{}-{}@{}".format(
-                                source_function.name.replace("\"", "'"),
-                                source_function.start_line,
-                                source_function.end_line,
-                                source_file.filename),
-                            source_file.filename,
-                            source_function.name.replace("\"", "'"),
-                            source_function.long_name.replace("\"", "'"),
-                            source_function.start_line,
-                            source_function.end_line,
-                            extension_string)
-                        if len(source_function.long_name) < 1000 and len(source_function.name) < 1000:
-                            print(line)
-                    except UnicodeError:
-                        print('Error writing line to csv output!')
+        if not source_file:
+            continue
+        for source_function in source_file.function_list:
+            if not source_function:
+                continue
+            name = source_function.name.replace('"', "'")
+            long_name = source_function.long_name.replace('"', "'")
+            fields = [
+                source_function.nloc,
+                source_function.cyclomatic_complexity,
+                source_function.token_count,
+                len(source_function.parameters),
+                source_function.length,
+                f'"{name}@{source_function.start_line}-'
+                f'{source_function.end_line}@{source_file.filename}"',
+                f'"{source_file.filename}"',
+                f'"{name}"',
+                f'"{long_name}"',
+                source_function.start_line,
+                source_function.end_line,
+            ]
+            fields.extend(
+                getattr(source_function, variable)
+                for variable in extension_variables)
+            if len(long_name) < 1000 and len(name) < 1000:
+                try:
+                    print(",".join(str(field) for field in fields))
+                except UnicodeError:
+                    print('Error writing line to csv output!')

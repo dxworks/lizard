@@ -83,13 +83,13 @@ DEFAULT_CCN_THRESHOLD, DEFAULT_WHITELIST, \
 
 # pylint: disable-msg=too-many-arguments
 def analyze(paths, exclude_pattern=None, threads=1, exts=None,
-            lans=None):
+            lans=None, use_gitignore=True):
     '''
     returns an iterator of file information that contains function
     statistics.
     '''
     exclude_pattern = exclude_pattern or []
-    files = get_all_source_files(paths, exclude_pattern, lans)
+    files = get_all_source_files(paths, exclude_pattern, lans, use_gitignore)
     return analyze_files(files, threads, exts)
 
 
@@ -110,7 +110,8 @@ def _extension_arg(parser):
                         -Ewordcount: count word frequencies and generate tag
                         cloud. -Eoutside: include the global code as one
                         function.  -EIgnoreAssert: to ignore all code in
-                        assert. -ENS: count nested control structures.''',
+                        assert. -ENS: count nested control structures.
+                        -Ehalstead: compute Halstead complexity metrics.''',
                         action="append",
                         dest="extensions",
                         default=[])
@@ -215,6 +216,11 @@ def arg_parser(prog=None):
                         action="append",
                         dest="exclude",
                         default=[])
+    parser.add_argument("--no-gitignore",
+                        help='''Do not use .gitignore files to exclude files.''',
+                        action="store_false",
+                        dest="use_gitignore",
+                        default=True)
     parser.add_argument("-t", "--working_threads",
                         help='''number of working threads. The default
                         value is 1. Using a bigger
@@ -951,13 +957,41 @@ def md5_hash_file(full_path_name):
         return None
 
 
-def get_all_source_files(paths, exclude_patterns, lans):
+def _build_gitignore_spec(patterns):
+    '''
+    Builds a PathSpec from gitignore patterns, tolerating lines pathspec
+    can't parse (e.g. Windows-style paths with unescaped backslashes) by
+    normalizing separators or, failing that, dropping just that line.
+    '''
+    try:
+        import pathspec
+        from pathspec.patterns.gitwildmatch import GitWildMatchPatternError
+    except ImportError:
+        return None
+
+    def _valid_form(pattern):
+        for candidate in (pattern, pattern.replace('\\', '/')):
+            try:
+                pathspec.PathSpec.from_lines('gitwildmatch', [candidate])
+                return candidate
+            except GitWildMatchPatternError:
+                continue
+        return None
+
+    valid_patterns = [p for p in (_valid_form(p) for p in patterns) if p]
+    if not valid_patterns:
+        return None
+    return pathspec.PathSpec.from_lines('gitwildmatch', valid_patterns)
+
+
+def get_all_source_files(paths, exclude_patterns, lans, use_gitignore=True):
     '''
     Function counts md5 hash for the given file and checks if it isn't a
     duplicate using set of hashes for previous files.
 
-    If a .gitignore file is found in any of the given paths, it will be used
-    to filter out files that match the gitignore patterns.
+    If use_gitignore is true and a .gitignore file is found in any of the
+    given paths, it will be used to filter out files that match the gitignore
+    patterns.
     '''
     hash_set = set()
     gitignore_spec = None
@@ -966,20 +1000,16 @@ def get_all_source_files(paths, exclude_patterns, lans):
 
     def _load_gitignore():
         nonlocal gitignore_spec, base_path
-        try:
-            import pathspec
-            for path in paths:
-                gitignore_path = os.path.join(path, '.gitignore')
-                if os.path.exists(gitignore_path):
-                    gitignore_file = auto_read(gitignore_path)
-                    # Read lines and strip whitespace and empty lines
-                    patterns = [line.strip() for line in gitignore_file.splitlines()]
-                    patterns = [p for p in patterns if p and not p.startswith('#')]
-                    gitignore_spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
-                    base_path = path
-                    break
-        except ImportError:
-            pass
+        for path in paths:
+            gitignore_path = os.path.join(path, '.gitignore')
+            if os.path.exists(gitignore_path):
+                gitignore_file = auto_read(gitignore_path)
+                # Read lines and strip whitespace and empty lines
+                patterns = [line.strip() for line in gitignore_file.splitlines()]
+                patterns = [p for p in patterns if p and not p.startswith('#')]
+                gitignore_spec = _build_gitignore_spec(patterns)
+                base_path = path
+                break
 
     def _support(reader):
         return not lans or set(lans).intersection(
@@ -1016,7 +1046,8 @@ def get_all_source_files(paths, exclude_patterns, lans):
                     for filename in files:
                         yield os.path.join(root, filename)
 
-    _load_gitignore()
+    if use_gitignore:
+        _load_gitignore()
     return filter(_validate_file, all_listed_files(paths))
 
 
@@ -1137,7 +1168,8 @@ def main(argv=None):
         options.exclude,
         options.working_threads,
         options.extensions,
-        options.languages)
+        options.languages,
+        options.use_gitignore)
     warning_count = None
     if options.output_file:
         output_file = open_output_file(options.output_file)
