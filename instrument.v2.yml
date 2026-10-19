@@ -12,7 +12,7 @@ actions:
           windows: >-
             python lizard.py -V --csv "${repo}" > "${instrumentPath}/results/${repoName}.csv"
           unix: >-
-            python lizard.py -V --csv "${repo}" > "${instrumentPath}/results/${repoName}.csv"
+            python3 lizard.py -V --csv "${repo}" > "${instrumentPath}/results/${repoName}.csv"
 
   summary:
     md-file: results/summary.md
