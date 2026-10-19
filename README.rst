@@ -17,24 +17,32 @@ code analysis.
 
 A list of supported languages:
 
--  C/C++ (works with C++14)
--  Java
 -  C# (C Sharp)
--  JavaScript (With ES6 and JSX)
--  TypeScript
--  Objective-C
--  Swift
--  Python
--  Ruby
--  TTCN-3
--  PHP
--  Scala
+-  C/C++ (works with C++14)
+-  Erlang
+-  Fortran
 -  GDScript
 -  Golang
--  Lua
--  Rust
--  Fortran
+-  Java
+-  JavaScript (With ES6 and JSX)
 -  Kotlin
+-  Lua
+-  Objective-C
+-  Perl
+-  PHP
+-  PL/SQL
+-  Python
+-  R
+-  Ruby
+-  Rust
+-  Scala
+-  Solidity
+-  Structured Text (St)
+-  Swift
+-  TTCN-3
+-  TypeScript (With TSX)
+-  VueJS
+-  Zig
 
 By default lizard will search for any source code that it knows and mix
 all the results together. This might not be what you want. You can use
@@ -57,7 +65,7 @@ often very hard to get all the included folders and files right when
 they are complicated. But we don't really need that kind of accuracy for
 cyclomatic complexity.
 
-It requires python2.7 or above (early versions are not verified).
+It requires python3.8 or above (early versions are not verified).
 
 Installation
 ------------
@@ -81,7 +89,7 @@ Or if you've got the source:
 
 ::
 
-   [sudo] python setup.py install --install-dir=/path/to/installation/directory/
+   [sudo] python setup.py install --prefix=/path/to/installation/directory/
 
 Usage
 -----
@@ -102,6 +110,17 @@ Exclude anything in the tests folder:
 
     lizard mySource/ -x"./tests/*"
 
+Use .gitignore file:
+
+::
+
+    lizard mySource/
+
+If there is a .gitignore file in the given path, lizard will automatically use it as an additional filter to exclude files that match the gitignore patterns. This is useful when you want to analyze only the tracked files in your git repository. To analyze all discovered source files regardless of .gitignore, use --no-gitignore:
+
+::
+
+    lizard --no-gitignore mySource/
 
 Options
 ~~~~~~~
@@ -115,7 +134,7 @@ Options
                         search for all languages it knows. `lizard -l cpp -l java`searches for
                         C++ and Java code. The available languages are: cpp, java, csharp,
                         javascript, python, objectivec, ttcn, ruby, php, swift, scala, GDScript,
-                        go, lua, rust, typescript
+                        go, lua, rust, typescript, plsql
   -V, --verbose         Output in verbose mode (long function name)
   -C CCN, --CCN CCN     Threshold for cyclomatic complexity number warning. The default value is
                         15. Functions with CCN bigger than it will generate warning
@@ -144,13 +163,15 @@ Options
                         single character, "./folder/*" exclude everything in the folder
                         recursively. Multiple patterns can be specified. Don't forget to add ""
                         around the pattern.
+  --no-gitignore        Do not use .gitignore files to exclude files.
   -t WORKING_THREADS, --working_threads WORKING_THREADS
                         number of working threads. The default value is 1. Using a bigger number
                         can fully utilize the CPU and often faster.
   -X, --xml             Generate XML in cppncss style instead of the tabular output. Useful to
                         generate report in Jenkins server
   --csv                 Generate CSV output as a transform of the default output
-  -H, --html            Output HTML report
+  -H, --html            Output HTML report with interactive DataTables (sortable, searchable, filterable)
+  --checkstyle          Generate Checkstyle XML output for integration with Jenkins and other tools
   -m, --modified        Calculate modified cyclomatic complexity number , which count a
                         switch/case with multiple cases as one CCN.
   -E EXTENSIONS, --extension EXTENSIONS
@@ -158,7 +179,7 @@ Options
                         code in the #else branch. -Ewordcount: count word frequencies and
                         generate tag cloud. -Eoutside: include the global code as one function.
                         -EIgnoreAssert: to ignore all code in assert. -ENS: count nested control
-                        structures.
+                        structures. -Ehalstead: compute Halstead complexity metrics.
   -s SORTING, --sort SORTING
                         Sort the warning with field. The field can be nloc,
                         cyclomatic_complexity, token_count, parameter_count, etc. Or an customized field.
@@ -291,13 +312,37 @@ Options in Comments
 -------------------
 
 You can use options in the comments of the source code to change the
-behavior of lizard. By putting "#lizard forgives" inside a function or
-before a function it will suppress the warning for that function.
+behavior of lizard. There are two types of forgiveness comments:
+
+1. Function forgiveness: Put "#lizard forgives" inside a function or before a function to suppress warnings for that function.
 
 ::
 
    int foo() {
-       // #lizard forgives the complexity
+       // #lizard forgives
+       ...
+   }
+
+   Selective forgiveness: Use "#lizard forgives(metric1, metric2)" to forgive only specific metrics (e.g. length, cyclomatic_complexity, parameter_count, nloc, token_count).
+
+::
+
+   int foo() {
+       // #lizard forgives(length)  // Forgive only length violations
+       ...
+   }
+
+2. Global code forgiveness: Put "#lizard forgive global" before global code to suppress warnings for all code outside of functions.
+
+::
+
+   // #lizard forgive global
+   int global_var = 0;
+   if (condition) {  // This complexity won't be counted
+       ...
+   }
+
+   int foo() {  // Functions are still counted normally
        ...
    }
 
@@ -352,3 +397,11 @@ Lizard is also used as a plugin for fastlane to help check code complexity and s
 - `European research project FASTEN (Fine-grained Analysis of SofTware Ecosystems as Networks, <http://fasten-project.eu/)>`_
   - `for a quality analyzer <https://github.com/fasten-project/quality-analyzer>`_
 
+How To Contribute
+-----------------
+
+Contributions are welcome. Please refer to the rules and development workflow in:
+
+- https://github.com/terryyin/lizard/tree/master/.cursor/rules
+
+These guidelines are usable by both AI assistants and human contributors — what works for AI works for "I" as well — to keep changes cohesive, simple, and well-tested.

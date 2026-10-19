@@ -1,8 +1,10 @@
 import unittest
 import inspect
 from ..testHelpers import get_python_function_list_with_extension
+from lizard import analyze_file, FileAnalyzer, get_extensions
 from lizard_ext.lizardnd import LizardExtension as NestDepth
 from lizard_languages.python import PythonReader
+import os
 
 
 def get_python_function_list(source_code):
@@ -13,6 +15,54 @@ class Test_tokenizer_for_Python(unittest.TestCase):
     def test_comment_with_quote(self):
         tokens = PythonReader.generate_tokens("#'\n''")
         self.assertEqual(["#'", "\n", "''"], list(tokens))
+
+    def test_multiline_string_tokens(self):
+        code = '''"""First line
+Second line with 'single quotes'
+Third line with "double quotes"
+Fourth line with mixed quotes
+Fifth line with # comment markers
+"""'''
+        tokens = list(PythonReader.generate_tokens(code))
+        self.assertEqual(1, len(tokens))  # The entire multi-line string should be one token
+        self.assertEqual(code, tokens[0])  # The token should preserve the exact string
+
+    def test_block_string_is_one_token(self):
+        code = 'def a():\n    a = """\na b c d e f g h i"""\n    return a\n'
+        functions = get_python_function_list(code)
+        self.assertEqual(9, functions[0].token_count)
+        self.assertEqual(4, functions[0].end_line)
+
+    def check_function_info(self, source, expect_token_count, expect_nloc, expect_endline):
+        functions = get_python_function_list(source)
+        self.assertEqual(expect_token_count, functions[0].token_count)
+        self.assertEqual(expect_nloc, functions[0].nloc)
+        self.assertEqual(expect_endline, functions[0].end_line)
+
+    def test_block_string(self):
+        self.check_function_info('def f():\n a="""block string"""', 7, 2, 2)
+        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
+        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
+        self.check_function_info("def f():\n a='''block\n string'''", 7, 3, 3)
+        self.check_function_info("def f():\n a='''block\n '''", 7, 3, 3)
+
+    def test_docstring_is_not_counted_in_nloc(self):
+        self.check_function_info("def f():\n '''block\n '''\n pass", 6, 2, 4)
+
+    def test_complex_multiline_string(self):
+        code = '''def f():
+            x = """First line
+                Second line with 'single quotes'
+                Third line with "double quotes"
+                Fourth line with mixed quotes
+                Fifth line with # comment markers
+                """
+            return x'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(9, functions[0].token_count)  # def, f, (), :, x, =, multiline-string, return, x
+        self.assertEqual(8, functions[0].nloc)  # 8 lines total
+        self.assertEqual(8, functions[0].end_line)
 
 
 class Test_Python_nesting_level(unittest.TestCase):
@@ -110,6 +160,31 @@ class Test_parser_for_Python(unittest.TestCase):
         self.assertEqual(6, functions[0].end_line)
         self.assertEqual(13, functions[1].end_line)
 
+    def test_multi_line_function_def_with_indentation_more_than_function_body(self):
+        def function(arg1,
+                     arg2
+                     ):
+            if True:
+                return False
+
+        functions = get_python_function_list(inspect.getsource(function))
+        self.assertEqual(5, functions[0].nloc)
+        self.assertEqual(5, functions[0].end_line)
+
+    def test_function_surrounded_by_global_statements(self):
+        source = """
+        s1 = 'global statement'
+        def function(arg1,
+                     arg2
+                     ):
+            if True:
+                return False
+        s2 = 'global statement'
+        """
+        functions = get_python_function_list(source)
+        self.assertEqual(5, functions[0].nloc)
+        self.assertEqual(7, functions[0].end_line)
+
     def test_parameter_count(self):
         class namespace2:
             def function_with_2_parameters(a, b):
@@ -124,6 +199,62 @@ class Test_parser_for_Python(unittest.TestCase):
         functions = get_python_function_list(inspect.getsource(namespace_df))
         self.assertEqual(2, functions[0].parameter_count)
         self.assertEqual(['a', 'b'], functions[0].parameters)
+        self.assertEqual("function_with_2_parameters_and_default_value( a , b = None )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_type_annotations(self):
+        functions = get_python_function_list('''
+            def function_with_3_parameters(a: str, b: int, c: float):
+                pass
+        ''')
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].parameter_count)
+        self.assertEqual(['a', 'b', 'c'], functions[0].parameters)
+        self.assertEqual("function_with_3_parameters( a : str , b : int , c : float )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_type_annotation_and_default(self):
+        functions = get_python_function_list('''
+            def function_with_3_parameters(a: int = 1):
+                pass
+        ''')
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].parameter_count)
+        self.assertEqual(['a'], functions[0].parameters)
+        self.assertEqual("function_with_3_parameters( a : int = 1 )",
+                         functions[0].long_name)
+
+    def test_parameter_count_with_parameterized_type_annotations(self):
+        functions = get_python_function_list('''
+            def function_with_parameterized_parameter(a: dict[str, tuple[int, float]]):
+                pass
+            def function_with_3_parameterized_parameters(a: dict[str, int],
+                                                         b: list[float],
+                                                         c: tuple[int, float, str]
+                                                         ):
+                pass
+                
+        ''')
+        self.assertEqual(2, len(functions))
+        self.assertEqual(1, functions[0].parameter_count)
+        self.assertEqual(['a'], functions[0].parameters)
+        self.assertEqual("function_with_parameterized_parameter( a : dict [ str , tuple [ int , float ] ] )",
+                         functions[0].long_name)
+        self.assertEqual(3, functions[1].parameter_count)
+        self.assertEqual(['a', 'b', 'c'], functions[1].parameters)
+        self.assertEqual("function_with_3_parameterized_parameters( a : dict [ str , int ] , b : list [ float ] , c : tuple [ int , float , str ] )",
+                         functions[1].long_name)
+
+    def test_parameter_count_with_trailing_comma(self):
+        functions = get_python_function_list('''
+            def foo(arg1,
+                    arg2,
+                    ):
+                # comment
+                return True
+        ''')
+        self.assertEqual(2, functions[0].parameter_count)
+        self.assertEqual(['arg1', 'arg2'], functions[0].parameters)
 
     def test_function_end(self):
         class namespace3:
@@ -245,6 +376,75 @@ class Test_parser_for_Python(unittest.TestCase):
         functions = get_python_function_list(inspect.getsource(function_with_comments))
         self.assertEqual(2, functions[0].nloc)
 
+    def test_triple_quoted_strings_as_comments_not_counted_in_nloc(self):
+        """Test that triple-quoted strings used as comments are not counted in NLOC"""
+        # Single line triple-quoted string as comment
+        code1 = '''def test_func():
+    x = 1
+    """This is a comment, not a docstring."""
+    return x
+'''
+        functions = get_python_function_list(code1)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_multiline_triple_quoted_strings_as_comments_not_counted_in_nloc(self):
+        """Test that multiline triple-quoted strings used as comments are not counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    """This is a multiline comment.
+    It spans multiple lines.
+    And should not be counted."""
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_single_quoted_triple_strings_as_comments_not_counted_in_nloc(self):
+        """Test that single-quoted triple strings used as comments are not counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    \'''This is also a comment.
+    Using single quotes instead of double.
+    Should also not be counted.\'''
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_docstring_still_not_counted_in_nloc(self):
+        """Test that docstrings (first statement) are still correctly excluded from NLOC"""
+        code = '''def test_func():
+    """This is a proper docstring."""
+    x = 1
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(3, functions[0].nloc)  # def, x=1, return x
+        
+    def test_mixed_comments_and_triple_quoted_strings_not_counted_in_nloc(self):
+        """Test mixed regular comments and triple-quoted strings as comments"""
+        code = '''def test_func():
+    x = 1
+    # Regular comment
+    """Triple-quoted comment."""
+    y = 2
+    \'''Another triple-quoted comment.\'''
+    # Another regular comment
+    return x + y
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(4, functions[0].nloc)  # def, x=1, y=2, return x+y
+        
+    def test_triple_quoted_string_assigned_to_variable_counted_in_nloc(self):
+        """Test that triple-quoted strings assigned to variables ARE counted in NLOC"""
+        code = '''def test_func():
+    x = 1
+    comment = """This is assigned to a variable, so it's code."""
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(4, functions[0].nloc)  # def, x=1, comment=..., return x
+
     def test_odd_blank_line(self):
         code =  "class c:\n" + \
                 "    def f():\n" +\
@@ -274,33 +474,513 @@ class Test_parser_for_Python(unittest.TestCase):
         self.assertEqual(9, functions[0].cyclomatic_complexity)
         self.assertEqual(8, functions[0].max_nesting_depth)
 
+    def test_python_forgive_global(self):
+        code = '''
+# Global code with complexity
+x = 1
+if x > 0:
+    print("Positive")
+elif x < 0:
+    print("Negative")
+else:
+    print("Zero")
 
-    def test_block_string_is_one_token(self):
-        code =  'def a():\n' + \
-                "    a = '''\n" +\
-                "a b c d e f g h i'''\n"+\
-                "    return a\n"
+# #lizard forgive global
+# More global code with complexity
+y = 2
+if y > 0:
+    print("Y is positive")
+elif y < 0:
+    print("Y is negative")
+
+# This function should still be counted
+def test_function(param):
+    if param > 0:
+        print("Param is positive")
+    elif param < 0:
+        print("Param is negative")
+    else:
+        print("Param is zero")
+'''
         functions = get_python_function_list(code)
-        self.assertEqual(9, functions[0].token_count)
-        self.assertEqual(4, functions[0].end_line)
+        
+        # Should have one function (test_function) since global code is forgiven
+        self.assertEqual(1, len(functions))
+        
+        # Verify the function is the one we expect
+        function = functions[0]
+        self.assertEqual("test_function", function.name)
+        self.assertEqual(3, function.cyclomatic_complexity)  # 1 base + 2 conditions (else doesn't count)
 
-    def check_function_info(self, source, expect_token_count, expect_nloc, expect_endline):
-        functions = get_python_function_list(source)
-        self.assertEqual(expect_token_count, functions[0].token_count)
-        self.assertEqual(expect_nloc, functions[0].nloc)
-        self.assertEqual(expect_endline, functions[0].end_line)
 
-    def test_block_string(self):
-        self.check_function_info('def f():\n a="""block string"""', 7, 2, 2)
-        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
-        self.check_function_info("def f():\n a='''block string'''", 7, 2, 2)
-        self.check_function_info("def f():\n a='''block\n string'''", 7, 3, 3)
-        self.check_function_info("def f():\n a='''block\n '''", 7, 3, 3)
+class Test_Python_match_case(unittest.TestCase):
+    """Tests for Python 3.10+ structural pattern matching (match/case)."""
 
-    def test_docstring_is_not_counted_in_nloc(self):
-        self.check_function_info("def f():\n '''block\n '''\n pass", 6, 2, 4)
+    def test_match_case_basic_complexity(self):
+        """Each case arm adds +1 to cyclomatic complexity."""
+        code = '''
+def f(x):
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case _:
+            return "other"
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        # 1 base + 3 case arms
+        self.assertEqual(4, functions[0].cyclomatic_complexity)
 
-    #global complexity
+    def test_match_does_not_add_complexity_by_itself(self):
+        """match without case arms only has base complexity 1."""
+        code = '''
+def f(x):
+    match x:
+        case _:
+            pass
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        # 1 base + 1 case
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_match_case_with_guard(self):
+        """case with an if guard is a single arm; the guard is counted as 'if'."""
+        code = '''
+def classify(point):
+    match point:
+        case (x, y) if x == y:
+            return "diagonal"
+        case (x, y):
+            return "other"
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        # 1 base + 2 cases + 1 guard (if)
+        self.assertEqual(4, functions[0].cyclomatic_complexity)
+
+    def test_case_variable_not_counted_as_keyword(self):
+        """'case' used as a plain variable name must not add to complexity."""
+        code = '''
+def f():
+    case = 5
+    return case
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        # 1 base only; 'case = 5' is assignment, not a keyword
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_attribute_access_not_counted(self):
+        """'case.something' must not be counted as a case keyword."""
+        code = '''
+def f(case):
+    return case.value
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_member_access_not_counted(self):
+        """'foo.case' must not be counted as a case keyword."""
+        code = '''
+def f(foo):
+    return foo.case
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_annotated_assignment_not_counted(self):
+        """'case: int = 5' (type-annotated variable) must not add complexity."""
+        code = '''
+def f():
+    case: int = 5
+    return case
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_tuple_unpacking_not_counted(self):
+        """'case, other = 1, 2' (tuple unpacking) must not add complexity."""
+        code = '''
+def f():
+    case, other = 1, 2
+    return case + other
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_function_call_not_counted(self):
+        """'case(x)' as a function call must not add complexity."""
+        code = '''
+def f(x):
+    case(x)
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_subscript_not_counted(self):
+        """'case[0]' as a subscript must not add complexity."""
+        code = '''
+def f(case):
+    return case[0]
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_parenthesized_pattern_counted(self):
+        """'case (x, y):' as a tuple pattern in a match arm must add complexity."""
+        code = '''
+def f(point):
+    match point:
+        case (x, y):
+            return x + y
+        case _:
+            return 0
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_case_sequence_pattern_counted(self):
+        """'case [0]:' as a sequence pattern in a match arm must add complexity."""
+        code = '''
+def f(lst):
+    match lst:
+        case [0]:
+            return "zero"
+        case _:
+            return "other"
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_case_nested_brackets_in_pattern_counted(self):
+        """'case (x, (y, z)):' — nested brackets in a pattern must add complexity."""
+        code = '''
+def f(point):
+    match point:
+        case (x, (y, z)):
+            return x + y + z
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_case_pattern_with_guard_counted(self):
+        """'case (x, y) if x > 0:' — the arm (and its guard 'if') must both add complexity."""
+        code = '''
+def f(point):
+    match point:
+        case (x, y) if x > 0:
+            return x
+'''
+        # 1 base + 1 case arm + 1 guard 'if' = 3
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_case_pattern_guard_with_dict_literal_counted(self):
+        """Guard containing a dict literal must not confuse the lookahead.
+
+        'case (x, y) if x in {0: "a", 1: "b"}:' — the ':' tokens inside the
+        dict literal are at depth > 0 and must not prematurely end the scan.
+        The case arm and the guard 'if' must both be counted.
+        """
+        code = '''
+def f(v):
+    match v:
+        case (x, y) if x in {0: "a", 1: "b"}:
+            return x
+'''
+        # 1 base + 1 case arm + 1 guard 'if' = 3
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_case_sequence_pattern_with_guard_counted(self):
+        """'case [x, y] if x > 0:' — sequence pattern with guard must add complexity."""
+        code = '''
+def f(lst):
+    match lst:
+        case [x, y] if x > 0:
+            return x
+'''
+        # 1 base + 1 case arm + 1 guard 'if' = 3
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_case_subscript_assignment_not_counted(self):
+        """'case[key] = value' (subscript assignment) must not add complexity."""
+        code = '''
+def f(case):
+    case[0] = 99
+    return case
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_case_multiline_pattern_counted(self):
+        """A match pattern spanning two lines (implicit continuation inside brackets)
+        must still be recognised and add complexity."""
+        code = '''
+def f(point):
+    match point:
+        case (x,
+              y):
+            return x + y
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_case_multiline_function_call_not_counted(self):
+        """A multi-line function call 'case(\\n    x\\n)' must not add complexity."""
+        code = '''
+def f(x):
+    case(
+        x
+    )
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_match_function_call_not_counted(self):
+        """'match(x)' as a function call must not add complexity."""
+        code = '''
+def f(x):
+    match(x)
+    return x
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_match_variable_not_counted(self):
+        """'match' used as a plain variable or function name adds no complexity."""
+        code = '''
+def f(text):
+    match = re.match(r"\\d+", text)
+    return match
+'''
+        functions = get_python_function_list(code)
+        self.assertEqual(1, len(functions))
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_match_case_equivalent_complexity_to_if_elif(self):
+        """match/case with N arms should match complexity of if/elif chain with N-1 elifs.
+
+        Note: 'case _:' (wildcard/default) counts as +1 like any other case arm,
+        whereas 'else:' in an if/elif chain adds 0.  So a match with a wildcard
+        arm has one more complexity point than the equivalent if/elif/else chain.
+        To compare fairly, omit the wildcard arm and use a plain else.
+        """
+        if_code = '''
+def f(x):
+    if x == 1:
+        return "one"
+    elif x == 2:
+        return "two"
+    elif x == 3:
+        return "three"
+'''
+        match_code = '''
+def f(x):
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case 3:
+            return "three"
+'''
+        if_funcs = get_python_function_list(if_code)
+        match_funcs = get_python_function_list(match_code)
+        # Both: 1 (base) + 3 (if/elif or case arms) = 4
+        self.assertEqual(if_funcs[0].cyclomatic_complexity,
+                         match_funcs[0].cyclomatic_complexity)
+
+    def test_match_wildcard_adds_one(self):
+        """'case _:' is counted as a case arm (+1), unlike 'else:' which is free."""
+        code_with_wildcard = '''
+def f(x):
+    match x:
+        case 1:
+            return "one"
+        case _:
+            return "other"
+'''
+        code_with_else = '''
+def f(x):
+    if x == 1:
+        return "one"
+    else:
+        return "other"
+'''
+        match_funcs = get_python_function_list(code_with_wildcard)
+        if_funcs = get_python_function_list(code_with_else)
+        # match: 1 + 2 (case 1 + case _) = 3
+        self.assertEqual(3, match_funcs[0].cyclomatic_complexity)
+        # if/else: 1 + 1 (if only, else is free) = 2
+        self.assertEqual(2, if_funcs[0].cyclomatic_complexity)
+
+
+class Test_Python_match_case_with_modified_ccn(unittest.TestCase):
+    """Tests for match/case interaction with the --modified CCN extension."""
+
+    def _get_funcs(self, code, *extensions):
+        from lizard import FileAnalyzer, get_extensions
+        return FileAnalyzer(get_extensions(list(extensions))).analyze_source_code(
+            "a.py", code).function_list
+
+    def test_match_case_not_cancelled_by_modified_extension(self):
+        """lizardmodified treats Python match/case like switch/case:
+        the whole block counts as 1 (not 1 per arm)."""
+        from lizard_ext.lizardnd import LizardExtension as NestDepth
+        from lizard_ext.lizardmodified import LizardExtension as Modified
+        code = '''
+def f(x):
+    match x:
+        case 1:
+            return "one"
+        case 2:
+            return "two"
+        case _:
+            return "other"
+'''
+        normal = self._get_funcs(code, NestDepth())
+        modified = self._get_funcs(code, NestDepth(), Modified())
+        # Regular CCN: 1 base + 3 case arms
+        self.assertEqual(4, normal[0].cyclomatic_complexity)
+        # Modified CCN: 1 base + 1 for the whole match block (like switch/case)
+        self.assertEqual(2, modified[0].cyclomatic_complexity)
+
+    def test_case_variable_not_penalised_by_modified_extension(self):
+        """'case = 5' must not drive complexity negative under lizardmodified."""
+        from lizard_ext.lizardnd import LizardExtension as NestDepth
+        from lizard_ext.lizardmodified import LizardExtension as Modified
+        code = '''
+def f():
+    case = 5
+    return case
+'''
+        modified = self._get_funcs(code, NestDepth(), Modified())
+        self.assertEqual(1, modified[0].cyclomatic_complexity)
+
+    def test_match_function_call_not_penalised_by_modified_extension(self):
+        """'match(x)' as a function call must not add a block bonus under lizardmodified."""
+        from lizard_ext.lizardnd import LizardExtension as NestDepth
+        from lizard_ext.lizardmodified import LizardExtension as Modified
+        code = '''
+def f(x):
+    match(x)
+    return x
+'''
+        modified = self._get_funcs(code, NestDepth(), Modified())
+        self.assertEqual(1, modified[0].cyclomatic_complexity)
+
+
+class Test_Python_fstring_complexity(unittest.TestCase):
+    """Control flow inside f-string {...} interpolations must be counted (#317)."""
+
+    def test_fstring_comprehension_counts_for(self):
+        functions = get_python_function_list(
+            'def f(items):\n    return f"{\', \'.join([x for x in items])}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_fstring_ternary_counts_if(self):
+        functions = get_python_function_list(
+            'def f(cond):\n    return f"{\'a\' if cond else \'b\'}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_fstring_logical_operators_counted(self):
+        functions = get_python_function_list(
+            'def f(a, b):\n    return f"{a and b or a}"\n')
+        self.assertEqual(3, functions[0].cyclomatic_complexity)
+
+    def test_fstring_matches_non_fstring_equivalent(self):
+        with_fs = get_python_function_list(
+            'def f(i):\n    return f"{[x for x in i]}"\n')
+        without = get_python_function_list(
+            'def f(i):\n    return [x for x in i]\n')
+        self.assertEqual(without[0].cyclomatic_complexity,
+                         with_fs[0].cyclomatic_complexity)
+
+    def test_keyword_inside_nested_string_not_counted(self):
+        # the 'if' lives inside a nested string literal; only 'or' is a real condition
+        functions = get_python_function_list(
+            'def f(x):\n    return f"{x or \'use this if empty\'}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_escaped_braces_are_not_interpolation(self):
+        # {{ and }} are literal braces, so the 'if' is plain text, not a condition
+        functions = get_python_function_list(
+            'def f():\n    return f"{{ keep this if you can }}"\n')
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_plain_fstring_has_base_complexity(self):
+        functions = get_python_function_list(
+            'def f(name):\n    return f"hello {name}"\n')
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_nested_fstring_counts_inner_control_flow(self):
+        functions = get_python_function_list(
+            'def f(items):\n    return f"{f\'{[x for x in items]}\'}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_brace_inside_nested_string_in_interpolation(self):
+        # '}' inside a nested string must not terminate the interpolation early
+        functions = get_python_function_list(
+            'def f(x):\n    return f"{x or \'}\'}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_ternary_after_string_containing_brace(self):
+        functions = get_python_function_list(
+            'def f(cond):\n    return f"{foo(\'}\') if cond else bar}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_format_spec_does_not_add_complexity(self):
+        functions = get_python_function_list(
+            'def f(x):\n    return f"{x:.2f}"\n')
+        self.assertEqual(1, functions[0].cyclomatic_complexity)
+
+    def test_triple_quoted_fstring_with_interpolation(self):
+        functions = get_python_function_list(
+            'def f(items):\n    return f"""{\', \'.join([x for x in items])}"""\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+    def test_bytes_fstring_counts_control_flow(self):
+        functions = get_python_function_list(
+            'def f(items):\n    return bf"{b\'x\' if items else b\'\'}"\n')
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
+
+
+class Test_Python_issue_317_comment_backslash(unittest.TestCase):
+    """#317: backslash at end of comment must not swallow the next line."""
+
+    def test_comment_backslash_hides_following_if(self):
+        code = (
+            'def testFunction(x):\n'
+            '    # this is a comment\\\n'
+            '    if x > 10:\n'
+            '        return "Greater than 10"\n'
+            '    return "Lower"\n'
+        )
+        functions = get_python_function_list(code)
+        self.assertEqual(2, functions[0].cyclomatic_complexity)
 
 
 def top_level_function_for_test():

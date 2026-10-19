@@ -93,8 +93,33 @@ class Test_c_cpp_lizard(unittest.TestCase):
         result = get_cpp_function_list("""int fun(){char *a="\\\\";}""")
         self.assertEqual(1, len(result))
 
-    def test_function_with_no_param(self):
+    def test_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 100'000; if(b) c; return 123'456'789;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_hex_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 0x12ab'34cd; if(b) c; return 0xEF56'7890'1A2B;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_bin_number_with_thousands_separator_since_cpp14(self):
+        result = get_cpp_function_list("""int fun(){
+            int a= 0b0101'1100; if(b) c; return 0b1111'0000'1100'1110;
+        }""")
+        self.assertEqual(1, len(result))
+        self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_function_with_no_param_omitted(self):
         result = get_cpp_function_list("int fun(){}")
+        self.assertEqual(0, result[0].parameter_count)
+
+    def test_function_with_no_param_void(self):
+        result = get_cpp_function_list("int fun(void){}")
         self.assertEqual(0, result[0].parameter_count)
 
     def test_function_with_1_param(self):
@@ -480,6 +505,25 @@ class Test_c_cpp_lizard(unittest.TestCase):
         self.assertEqual(1, len(result))
         self.assertEqual("A::foo", result[0].name)
 
+    def test_aggregate_initialization_with_double(self):
+        result = get_cpp_function_list('''
+            struct Bar {
+                double value;
+            };
+
+            void foo() {
+                Bar bar = {1.};
+                double x = 1.0;
+                double y = .5;
+                double z = 1.e-10;
+            }
+
+            void bar() {}
+        ''')
+        self.assertEqual(2, len(result))
+        self.assertEqual("foo", result[0].name)
+        self.assertEqual("bar", result[1].name)
+
 class Test_cpp11_Attributes(unittest.TestCase):
     """C++11 extendable attributes can appear pretty much anywhere."""
 
@@ -612,6 +656,24 @@ int mySecondFunction()
         self.assertEqual(2, len(result))
         self.assertEqual('mySecondFunction', result[1].name)
 
+    def test_macro_continuation_with_empty_line_issue_439(self):
+        """Test issue from PR #439: macro continuation followed by empty line.
+        
+        This test verifies that line counting is correct when a macro definition
+        uses a continuation marker (\\) followed by an empty line before a function.
+        """
+        # Using explicit newlines to ensure an empty line exists after the macro
+        code = "#define  SQ(x) ((x)*(x)) \\\n\nbool foo(status *pstat)\n{\n    return true;\n}\n"
+        result = get_cpp_function_list(code)
+        self.assertEqual(1, len(result))
+        self.assertEqual('foo', result[0].name)
+        # The function should start at line 3 (after #define line 1 and empty line 2)
+        # and end at line 6 (the closing brace)
+        self.assertEqual(3, result[0].start_line, 
+                        "Function should start at line 3 after macro and empty line")
+        self.assertEqual(6, result[0].end_line,
+                        "Function should end at line 6")
+
 
 class Test_Big(unittest.TestCase):
 
@@ -659,3 +721,189 @@ class Test_Dialects(unittest.TestCase):
                 }''')
         self.assertEqual(1, len(result))
         self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_lambda_expression_issue_429(self):
+        """Test lambda expression parsing issue from GitHub issue #429."""
+        # This is the exact code from the issue that causes problems
+        code = """
+auto CombPairHash = [](const CombPair &pair) {
+  return pair.first ^ (pair.second<<1); };
+
+int main() {
+    return 0;
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the main function, lambda should not be treated as a function
+        self.assertEqual(1, len(result))
+        self.assertEqual("main", result[0].name)
+
+    def test_lambda_expression_with_capture(self):
+        """Test lambda expression with capture list."""
+        code = """
+auto lambda = [&](int x) { return x * 2; };
+
+void foo() {
+    auto result = lambda(5);
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the foo function, lambda should not be treated as a function
+        self.assertEqual(1, len(result))
+        self.assertEqual("foo", result[0].name)
+
+    def test_lambda_expression_in_function(self):
+        """Test lambda expression inside a function."""
+        code = """
+void process() {
+    auto lambda = [](int x) { return x + 1; };
+    int result = lambda(10);
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find the process function
+        self.assertEqual(1, len(result))
+        self.assertEqual("process", result[0].name)
+
+    def test_multiple_functions_with_static_cast_issue_443(self):
+        """Test multiple void functions with multiple static_cast calls (issue #443)."""
+        # This reproduces a bug where lizard.analyze would freeze when iterating
+        # through the result map when analyzing files with multiple void functions
+        # containing multiple static_cast<...> calls
+        code = """
+void func1() {
+    int a = static_cast<int>(1.5);
+    double b = static_cast<double>(2);
+    long c = static_cast<long>(3.0);
+}
+
+void func2() {
+    int x = static_cast<int>(4.5);
+    double y = static_cast<double>(5);
+    long z = static_cast<long>(6.0);
+}
+
+void func3() {
+    int p = static_cast<int>(7.5);
+    double q = static_cast<double>(8);
+    long r = static_cast<long>(9.0);
+}
+"""
+        result = get_cpp_function_list(code)
+        # Should find all three functions without freezing
+        self.assertEqual(3, len(result))
+        self.assertEqual("func1", result[0].name)
+        self.assertEqual("func2", result[1].name)
+        self.assertEqual("func3", result[2].name)
+
+
+class Test_cpp_raw_string_literals(unittest.TestCase):
+    """Issue #478: C++ raw string literals must not corrupt function boundaries."""
+
+    _RAW_PATTERNS = (
+        '    const auto r_pattern{pattern0};\n'
+        '    const auto e_pattern{pattern1};\n',
+        '    const auto r_pattern = pattern0;\n'
+        '    const auto e_pattern = pattern1;\n',
+    )
+    _PATTERN0 = 'R"(\\b\\w*R\\w*\\b)"'
+    _PATTERN1 = 'R"(<Blah>(\\d+)</Blah>)"'
+
+    def _source_with_raw_strings(self, body_lines):
+        return (
+            'auto process()\n'
+            '{\n'
+            + body_lines.format(pattern0=self._PATTERN0, pattern1=self._PATTERN1)
+            + '}\n'
+            '\n'
+            'int main()\n'
+            '{\n'
+            '    auto pat = "{}";\n'
+            '}\n')
+
+    def _assert_process_and_main(self, result):
+        self.assertEqual(2, len(result))
+        self.assertEqual("process", result[0].name)
+        self.assertEqual(1, result[0].start_line)
+        self.assertEqual(5, result[0].end_line)
+        self.assertEqual("main", result[1].name)
+        self.assertEqual(7, result[1].start_line)
+        self.assertEqual(10, result[1].end_line)
+
+    def test_raw_string_init_keeps_following_function(self):
+        for name, body_lines in (
+                ('brace', self._RAW_PATTERNS[0]),
+                ('equals', self._RAW_PATTERNS[1]),
+        ):
+            with self.subTest(init=name):
+                result = get_cpp_function_list(
+                    self._source_with_raw_strings(body_lines))
+                self._assert_process_and_main(result)
+
+    def test_single_raw_string_in_function_keeps_following_function(self):
+        result = get_cpp_function_list(
+            'auto process()\n'
+            '{\n'
+            '    const auto r_pattern{R"(\\b\\w*R\\w*\\b)"};\n'
+            '}\n'
+            '\n'
+            'int main() { return 0; }\n')
+        self.assertEqual(2, len(result))
+        self.assertEqual("process", result[0].name)
+        self.assertEqual(1, result[0].start_line)
+        self.assertEqual(4, result[0].end_line)
+        self.assertEqual("main", result[1].name)
+        self.assertEqual(6, result[1].start_line)
+        self.assertEqual(6, result[1].end_line)
+
+    def test_adjacent_raw_string_literals_tokenize_separately(self):
+        src = (
+            'const auto a{R"(\\b\\w*R\\w*\\b)"};\n'
+            '    const auto b{R"(<Blah>(\\d+)</Blah>)"};')
+        raw_tokens = [
+            t for t in CLikeReader.generate_tokens(src)
+            if t.startswith('R"(') and t.endswith(')"')]
+        self.assertEqual(
+            ['R"(\\b\\w*R\\w*\\b)"', 'R"(<Blah>(\\d+)</Blah>)"'],
+            raw_tokens)
+
+    def test_raw_string_with_encoding_prefix(self):
+        result = get_cpp_function_list(
+            'int a()\n'
+            '{\n'
+            '    auto w = LR"(wide)";\n'
+            '    auto u = u8R"(utf8)";\n'
+            '}\n'
+            'int b()\n'
+            '{\n'
+            '    return 0;\n'
+            '}\n')
+        self.assertEqual(2, len(result))
+        self.assertEqual("a", result[0].name)
+        self.assertEqual(1, result[0].start_line)
+        self.assertEqual(5, result[0].end_line)
+        self.assertEqual("b", result[1].name)
+        self.assertEqual(6, result[1].start_line)
+        self.assertEqual(9, result[1].end_line)
+
+    def test_custom_delimiter_raw_string_keeps_following_function(self):
+        # Custom delimiters are not matched by the raw-string pattern; they fall
+        # through to the normal string rule. That is fine as long as they carry
+        # no embedded double quote, which is the overwhelmingly common case
+        # (JSON/HTML bodies with balanced braces). Lock that boundary here.
+        result = get_cpp_function_list(
+            'int a()\n'
+            '{\n'
+            '    auto j = R"json({"x": [1, 2]})json";\n'
+            '}\n'
+            'int b()\n'
+            '{\n'
+            '    return 0;\n'
+            '}\n')
+        self.assertEqual(2, len(result))
+        self.assertEqual("a", result[0].name)
+        self.assertEqual(1, result[0].start_line)
+        self.assertEqual(4, result[0].end_line)
+        self.assertEqual("b", result[1].name)
+        self.assertEqual(5, result[1].start_line)
+        self.assertEqual(8, result[1].end_line)

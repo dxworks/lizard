@@ -6,6 +6,11 @@ import re
 import itertools
 from .code_reader import CodeStateMachine, CodeReader
 
+# Tokenizer fragment for C++ empty-delimiter raw strings R"(...)" (optional u8/u/U/L
+# prefix). Stops at the first ')"'. Custom delimiters use the normal string rule.
+# See #451, #478; subgroup-free per CodeReader.generate_tokens.
+_CPP_RAW_STRING_TOKEN = r"|(?:u8|u|U|L)?R\"\((?:[^)]|\)(?!\"))*\)\""
+
 
 class CCppCommentsMixin(object):  # pylint: disable=R0903
 
@@ -19,7 +24,7 @@ class CCppCommentsMixin(object):  # pylint: disable=R0903
 class CLikeReader(CodeReader, CCppCommentsMixin):
     ''' This is the reader for C, C++ and Java. '''
 
-    ext = ["c", "cpp", "cc", "mm", "cxx", "h", "hpp"]
+    ext = ["c", "cpp", "cc", "cxx", "h", "hpp"]
     language_names = ['cpp', 'c']
     macro_pattern = re.compile(r"#\s*(\w+)\s*(.*)", re.M | re.S)
 
@@ -29,6 +34,14 @@ class CLikeReader(CodeReader, CCppCommentsMixin):
                 CLikeStates(context),
                 CLikeNestingStackStates(context),
                 CppRValueRefStates(context))
+
+    @staticmethod
+    def generate_tokens(source_code, addition='', token_class=None):
+        addition = _CPP_RAW_STRING_TOKEN + \
+                  r"|(?:\d*\.\d+(?:[eE][-+]?\d+)?)" + \
+                  r"|(?:\d+\.(?:\d+)?(?:[eE][-+]?\d+)?)" + \
+                  addition
+        return CodeReader.generate_tokens(source_code, addition, token_class)
 
     def preprocess(self, tokens):
         tilde = False
@@ -46,7 +59,7 @@ class CLikeReader(CodeReader, CCppCommentsMixin):
                     elif macro.group(1) == 'include':
                         yield "#include"
                         yield macro.group(2) or "\"\""
-                    for _ in macro.group(2).splitlines()[1:]:
+                    for _ in macro.group(2).split('\n')[1:]:
                         yield '\n'
                 else:
                     yield token
@@ -154,6 +167,11 @@ class CLikeStates(CodeStateMachine):
     def _state_global(self, token):
         if token[0].isalpha() or token[0] in '_~':
             self.try_new_function(token)
+        elif token == '[':
+            # Check if this might be a lambda expression (C++ only)
+            # Java doesn't have lambda expressions, so skip lambda detection for Java
+            if not hasattr(self, 'class_name'):  # JavaStates has class_name attribute
+                self._state = self._state_lambda_check
 
     def _state_function(self, token):
         if token == '(':
@@ -182,7 +200,7 @@ class CLikeStates(CodeStateMachine):
             self.context.add_to_function_name(' ' + token)
 
     def _state_name_with_space(self, token):
-        self._state = self._state_operator\
+        self._state = self._state_operator \
             if token == 'operator' else self._state_function
         self.context.add_to_function_name(token)
 
@@ -196,7 +214,8 @@ class CLikeStates(CodeStateMachine):
             else:
                 self.next(self._state_global)
         elif len(self.bracket_stack) == 1:
-            self.context.parameter(token)
+            if token != 'void':  # void is a reserved keyword, meaning no parameters
+                self.context.parameter(token)
             return
         self.context.add_to_long_function_name(token)
 
@@ -301,3 +320,81 @@ class CLikeStates(CodeStateMachine):
     def _state_attribute(self, _):
         "Ignores function attributes with C++11 syntax, i.e., [[ attribute ]]."
         pass
+
+    def _state_lambda_check(self, token):
+        """Check if this is a lambda expression or a function attribute."""
+        if token == ']':
+            # This is an empty capture list [](params)
+            self._state = self._state_lambda_params
+        elif token == '[':
+            # This is a function attribute [[attribute]]
+            self._state = self._state_attribute
+        else:
+            # This is a lambda with capture list [capture](params)
+            self._state = self._state_lambda_capture
+
+    def _state_lambda_params(self, token):
+        """Handle lambda parameters and body."""
+        if token == '(':
+            # Start of parameter list
+            self.bracket_stack.append('(')
+            self._state = self._state_lambda_param_list
+        else:
+            # No parameters, check for body or go back to global
+            self._state = self._state_lambda_body
+            self._state(token)
+
+    def _state_lambda_param_list(self, token):
+        """Handle lambda parameter list with proper bracket tracking."""
+        if token == '(':
+            self.bracket_stack.append('(')
+        elif token == ')':
+            if self.bracket_stack and self.bracket_stack[-1] == '(':
+                self.bracket_stack.pop()
+                if not self.bracket_stack:
+                    # End of parameter list, check for body
+                    self._state = self._state_lambda_body
+        elif token in ('<', '['):
+            self.bracket_stack.append(token)
+        elif token == '>' and self.bracket_stack and self.bracket_stack[-1] == '<':
+            self.bracket_stack.pop()
+        elif token == ']' and self.bracket_stack and self.bracket_stack[-1] == '[':
+            self.bracket_stack.pop()
+
+    def _state_lambda_body(self, token):
+        """Handle lambda body and qualifiers."""
+        if token == '{':
+            # Start of lambda body
+            self.bracket_stack.append('{')
+            self._state = self._state_lambda_body_skip
+        elif token in ('mutable', 'noexcept', 'constexpr', 'consteval'):
+            # Lambda qualifiers, stay in this state
+            pass
+        elif token == '->':
+            # Trailing return type, stay in this state until we find '{'
+            pass
+        elif token in (';', ',', ')'):
+            # Lambda declaration ended, return to global
+            self._state = self._state_global
+            self._state(token)
+        else:
+            # Other tokens (type names, etc.) - stay in state
+            pass
+
+    def _state_lambda_body_skip(self, token):
+        """Skip lambda body with proper brace tracking."""
+        if token == '{':
+            self.bracket_stack.append('{')
+        elif token == '}':
+            if self.bracket_stack and self.bracket_stack[-1] == '{':
+                self.bracket_stack.pop()
+                if not self.bracket_stack:
+                    # End of lambda body
+                    self._state = self._state_global
+
+    def _state_lambda_capture(self, token):
+        """Handle lambda capture list."""
+        if token == ']':
+            # End of capture list, now expect parameters
+            self._state = self._state_lambda_params
+        # Otherwise, continue in capture list

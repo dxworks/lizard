@@ -1,11 +1,11 @@
 '''
-Language parser for JavaScript
+Language parser for PHP
 '''
 
 import re
 from .code_reader import CodeReader
 from .clike import CCppCommentsMixin
-from .js_style_language_states import JavaScriptStyleLanguageStates
+from .php_states import PHPLanguageStates
 
 
 class PHPReader(CodeReader, CCppCommentsMixin):
@@ -13,13 +13,20 @@ class PHPReader(CodeReader, CCppCommentsMixin):
 
     ext = ['php']
     language_names = ['php']
-    _conditions = set(['if', 'elseif', 'for', 'while', '&&', '||', '?',
-                       'catch', 'case'])
+
+    # Separated condition categories
+    _control_flow_keywords = {'if', 'elseif', 'for', 'foreach', 'while', 'catch', 'match'}
+    _logical_operators = {'&&', '||'}  # PHP also has 'and', 'or' with different precedence
+    _case_keywords = {'case'}
+    _ternary_operators = {'?'}
+    # Operators that contain '?' but are not the ternary operator
+    _non_ternary_question_operators = r"|(?:\?\?=)|(?:\?\?)|(?:\?->)|(?:\?:)"
 
     @staticmethod
     def generate_tokens(source_code, addition='', token_class=None):
         addition += r"|(?:\$\w+)"
         addition += r"|(?:\<{3}(?P<quote>\w+).*?(?P=quote))"
+        addition += PHPReader._non_ternary_question_operators
         current_pos = 0
         code_block_pattern = re.compile(
                 r"\<\?(?:php)?(.*?)(?:(\?\>)|\Z)",
@@ -36,4 +43,4 @@ class PHPReader(CodeReader, CCppCommentsMixin):
 
     def __init__(self, context):
         super(PHPReader, self).__init__(context)
-        self.parallel_states = [JavaScriptStyleLanguageStates(context)]
+        self.parallel_states = [PHPLanguageStates(context)]

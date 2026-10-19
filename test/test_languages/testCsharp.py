@@ -88,3 +88,132 @@ class TestCsharp(unittest.TestCase):
             }
         ''')
         self.assertEqual(2, result[0].cyclomatic_complexity)
+
+    def test_primary_constructor_vs_traditional(self):
+        # Test with primary constructor
+        result_primary = get_csharp_function_list('''
+            public class WorkspaceHeader(ILocator locator)
+            {
+                public void Method() { }
+            }
+        ''')
+        
+        # Test with traditional constructor
+        result_traditional = get_csharp_function_list('''
+            public class WorkspaceHeader
+            {
+                private readonly ILocator _locator;
+
+                public WorkspaceHeader(ILocator locator)
+                {
+                    _locator = locator;
+                }
+
+                public void Method() { }
+            }
+        ''')
+
+        # Both should have the same number of functions (just Method)
+        self.assertEqual(1, len(result_primary), 
+                       "Primary constructor should not be counted as a separate function")
+        self.assertEqual(2, len(result_traditional), 
+                       "Traditional constructor should be counted as one function")
+        
+        # Both Method functions should have complexity of 1
+        self.assertEqual("WorkspaceHeader::Method", result_primary[0].name,
+                       "Primary constructor version should only have Method function")
+        self.assertEqual(1, result_primary[0].cyclomatic_complexity,
+                       "Method should have complexity of 1")
+
+        # Check traditional constructor version - first list all functions for better debugging
+        function_names = [f.name for f in result_traditional]
+        self.assertIn("WorkspaceHeader::Method", function_names,
+                     f"Expected to find 'WorkspaceHeader::Method' function but only found these functions: {function_names}")
+        self.assertIn("WorkspaceHeader::WorkspaceHeader", function_names,
+                     f"Expected to find 'WorkspaceHeader::WorkspaceHeader' constructor but only found these functions: {function_names}")
+
+        method_func = next(f for f in result_traditional if f.name == "WorkspaceHeader::Method")
+        constructor_func = next(f for f in result_traditional if f.name == "WorkspaceHeader::WorkspaceHeader")
+        
+        self.assertEqual(1, method_func.cyclomatic_complexity,
+                       "Method should have complexity of 1")
+        self.assertEqual(1, constructor_func.cyclomatic_complexity,
+                       "Constructor should have complexity of 1")
+
+    def test_expression_bodied_methods(self):
+        """Test that expression-bodied methods (lambda-style syntax) are detected."""
+        result = get_csharp_function_list('''
+            using System;
+
+            public class SimpleCalculator
+            {
+                public int Add(int a, int b) => a + b;
+
+                public int Subtract(int a, int b)
+                {
+                    int result = a - b;
+                    return result;
+                }
+
+                public static void Main(string[] args)
+                {
+                    var calc = new SimpleCalculator();
+                    Console.WriteLine($"Addition: {calc.Add(30, 15)}");
+                    Console.WriteLine($"Subtraction: {calc.Subtract(30, 15)}");
+                }
+            }
+        ''')
+        
+        function_names = [f.name for f in result]
+        self.assertIn("SimpleCalculator::Add", function_names,
+                     f"Expected to find 'SimpleCalculator::Add' but only found: {function_names}")
+        self.assertIn("SimpleCalculator::Subtract", function_names,
+                     f"Expected to find 'SimpleCalculator::Subtract' but only found: {function_names}")
+        self.assertIn("SimpleCalculator::Main", function_names,
+                     f"Expected to find 'SimpleCalculator::Main' but only found: {function_names}")
+        
+        self.assertEqual(3, len(result),
+                        f"Expected 3 functions but found {len(result)}: {function_names}")
+        
+        add_func = next(f for f in result if f.name == "SimpleCalculator::Add")
+        self.assertEqual(1, add_func.cyclomatic_complexity,
+                        "Expression-bodied Add method should have complexity of 1")
+
+    def test_expression_bodied_methods(self):
+        """Test that expression-bodied methods (lambda-style syntax) are detected."""
+        result = get_csharp_function_list('''
+            using System;
+
+            public class SimpleCalculator
+            {
+                public int Add(int a, int b) => a + b;
+
+                public int Subtract(int a, int b)
+                {
+                    int result = a - b;
+                    return result;
+                }
+
+                public static void Main(string[] args)
+                {
+                    var calc = new SimpleCalculator();
+                    Console.WriteLine($"Addition: {calc.Add(30, 15)}");
+                    Console.WriteLine($"Subtraction: {calc.Subtract(30, 15)}");
+                }
+            }
+        ''')
+        
+        function_names = [f.name for f in result]
+        self.assertIn("SimpleCalculator::Add", function_names,
+                     f"Expected to find 'SimpleCalculator::Add' but only found: {function_names}")
+        self.assertIn("SimpleCalculator::Subtract", function_names,
+                     f"Expected to find 'SimpleCalculator::Subtract' but only found: {function_names}")
+        self.assertIn("SimpleCalculator::Main", function_names,
+                     f"Expected to find 'SimpleCalculator::Main' but only found: {function_names}")
+        
+        self.assertEqual(3, len(result),
+                        f"Expected 3 functions but found {len(result)}: {function_names}")
+        
+        add_func = next(f for f in result if f.name == "SimpleCalculator::Add")
+        self.assertEqual(1, add_func.cyclomatic_complexity,
+                        "Expression-bodied Add method should have complexity of 1")

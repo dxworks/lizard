@@ -1,6 +1,6 @@
 import unittest
 from lizard import parse_args
-from mock import patch
+from unittest.mock import patch
 import sys
 try:
     from StringIO import StringIO
@@ -17,6 +17,14 @@ class TestOptionParsing(unittest.TestCase):
     def test_default_sorting(self):
         options = parse_args(['lizard'])
         self.assertEqual(0, len(options.sorting))
+
+    def test_uses_gitignore_by_default(self):
+        options = parse_args(['lizard'])
+        self.assertTrue(options.use_gitignore)
+
+    def test_can_disable_gitignore(self):
+        options = parse_args(['lizard', '--no-gitignore'])
+        self.assertFalse(options.use_gitignore)
 
     def test_sorting_factor(self):
         options = parse_args(['lizard', '-snloc'])

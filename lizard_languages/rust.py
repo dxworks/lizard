@@ -1,5 +1,5 @@
 '''
-Language parser for Go lang
+Language parser for Rust lang
 '''
 
 from .code_reader import CodeReader
@@ -12,12 +12,22 @@ class RustReader(CodeReader, CCppCommentsMixin):
 
     ext = ['rs']
     language_names = ['rust']
-    _conditions = set(['if', 'for', 'while', '&&', '||', '?', 'catch',
-                      'case', 'match', 'where'])
+
+    # Separated condition categories
+    _control_flow_keywords = {'if', 'for', 'while', 'catch', 'match', 'where'}
+    _logical_operators = {'&&', '||'}
+    _case_keywords = set()  # Rust uses match arms, not case keyword
+    # Note: '?' in Rust is the error propagation operator, not ternary
+    _ternary_operators = {'?'}
 
     def __init__(self, context):
-        super(RustReader, self).__init__(context)
+        super().__init__(context)
         self.parallel_states = [RustStates(context)]
+
+    @staticmethod
+    def generate_tokens(source_code, addition='', token_class=None):
+        addition = r"|(?:'\w+\b)"  # lifetimes, labels
+        return CodeReader.generate_tokens(source_code, addition, token_class)
 
 
 class RustStates(GoLikeStates):  # pylint: disable=R0903
