@@ -23,6 +23,12 @@ jobs:
           cp LICENSE.txt lizard/LICENSE.txt
           cp instrument.yml lizard/instrument.yml
           cp instrument.v2.yml lizard/instrument.v2.yml
+          # The tool's version, from the release tag, in both manifests (V1 and V2)
+          VERSION="${GITHUB_REF_NAME#v}"; VERSION="${VERSION%-voyager}"
+          for f in lizard/instrument.yml lizard/instrument.v2.yml; do
+            awk -v v="$VERSION" '!/^version:/ {print} /^name:/ {print "version: " v}' "$f" > "$f.tmp"
+            mv "$f.tmp" "$f"
+          done
           cp lizard.py lizard/lizard.py
           cp summary_extract.py lizard/summary_extract.py
           cp summary_render.py lizard/summary_render.py
