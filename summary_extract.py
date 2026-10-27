@@ -30,6 +30,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
     except Exception:
         return _create_summary_payload(
             csv_files=[],
+            readable_csv_count=0,
             functions_total=0,
             unique_files=set(),
             nloc_total=0,
@@ -60,6 +61,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
     technology_metrics: dict[str, dict[str, Any]] = {}
     had_parse_failures = False
     invalid_rows_total = 0
+    readable_csv_count = 0
 
     for csv_file in csv_files:
         parsed = _parse_lizard_csv(csv_file)
@@ -72,6 +74,8 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
         max_length = max(max_length, parsed.max_length)
         invalid_rows_total += parsed.invalid_rows
         had_parse_failures = had_parse_failures or parsed.had_parse_failure
+        if not (parsed.had_parse_failure and parsed.functions_total == 0):
+            readable_csv_count += 1
 
         _merge_technology_metrics(technology_metrics, parsed.technology_metrics)
 
@@ -80,6 +84,7 @@ def extract_lizard_summary(results_directory: str | Path) -> dict[str, Any]:
 
     return _create_summary_payload(
         csv_files=csv_files,
+        readable_csv_count=readable_csv_count,
         functions_total=functions_total,
         unique_files=unique_files,
         nloc_total=nloc_total,
@@ -320,6 +325,7 @@ def _build_technology_rows(technology_metrics: dict[str, dict[str, Any]]) -> lis
 
 def _create_summary_payload(
     csv_files: list[Path],
+    readable_csv_count: int,
     functions_total: int,
     unique_files: set[str],
     nloc_total: int,
@@ -332,7 +338,7 @@ def _create_summary_payload(
 ) -> dict[str, Any]:
     average_ccn = _format_average(ccn_total, functions_total)
     average_length = _format_average(length_total, functions_total)
-    status = _resolve_status(csv_count=len(csv_files), has_data_quality_issues=has_data_quality_issues)
+    status = _resolve_status(csv_count=readable_csv_count, has_data_quality_issues=has_data_quality_issues)
 
     metadata = {
         'metadata.files.unique': len(unique_files),
