@@ -1,26 +1,35 @@
-# This workflow will create a release for Voyager
+# Creates the Voyager release when a v*-voyager tag is pushed.
+# The release carries lizard-voyager.zip: lizard's source plus the libraries it
+# needs at run time (.github/voyager/bundle-requirements.txt), because Voyager
+# runs lizard from source without pip install. voyenv.yml must name the asset.
+name: Voyager release
+
 on:
   push:
     tags:
       - 'v*-voyager'
 
-name: Create Release
+permissions:
+  contents: write
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: false
-          prerelease: false
+          python-version: '3.12'
+
+      - name: Build lizard-voyager.zip
+        run: .github/voyager/build-bundle.sh "$RUNNER_TEMP/lizard-voyager.zip"
+
+      - name: Create the release with the bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          "$RUNNER_TEMP/lizard-voyager.zip"
+          --title "$GITHUB_REF_NAME" --verify-tag

@@ -1,6 +1,7 @@
 # 0001 — Ubiquitous language for Lizard domain concepts
 
-**Status:** Proposed  
+**Status:** Accepted
+
 **Date:** 2026-08-18  
 **Decision makers:** Terry  
 **Consulted:** (existing product language in README, CLI, and code)
@@ -62,4 +63,4 @@ terms here; do not supersede this ADR with a new one.
 - Superseded by: (none)
 - Links: playbook [README.md](./README.md); ADR-0000
   [use-adrs-accepted.md](./0000-use-adrs-accepted.md); navigation
-  `.cursor/agent-map.md`
+  `.agents/agent-map.md`
