@@ -1,0 +1,5 @@
+# Libraries shipped inside lizard-voyager.zip.
+# Voyager runs lizard from source (python3 lizard.py) without pip install,
+# so lizard's run-time libraries travel inside the release zip instead.
+# Pinned to the official PyPI wheel by its SHA-256.
+pygments==2.21.0 --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9

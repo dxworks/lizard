@@ -31,7 +31,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_ignore_file_filters_node_modules(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         mock_os_walk.return_value = (['.',
@@ -45,7 +45,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_ignore_file_filters_multiple_patterns(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         mock_os_walk.return_value = (['.',
@@ -59,7 +59,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_project_ignore_file_filters_all_patterns(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         # One file per pattern in the real .ignore, plus a few that must NOT be filtered.
@@ -118,7 +118,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_ignore_file_supports_bracket_character_classes(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         mock_os_walk.return_value = (['.',
@@ -145,7 +145,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_ignore_file_supports_negated_bracket_class(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         mock_os_walk.return_value = (['.',
@@ -164,7 +164,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_ignore_file_supports_multiple_bracket_classes_in_one_pattern(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         mock_os_walk.return_value = (['.',
@@ -183,7 +183,7 @@ class TestIgnoreFile(unittest.TestCase):
     @patch.object(os.path, "exists")
     @patch.object(os.path, "relpath")
     @patch.object(os, "walk")
-    @patch("lizard.auto_read")
+    @patch("lizard_core.file_discovery.auto_read")
     def test_commented_out_patterns_are_not_applied(self, mock_auto_read, mock_os_walk, mock_relpath, mock_exists):
         self._setup_mocks(mock_exists, mock_relpath)
         # If '#temp.cs' were treated as a pattern (i.e. comment-stripping
