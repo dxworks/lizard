@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Builds lizard-voyager.zip: lizard's source at HEAD plus the libraries listed
-# in bundle-requirements.txt, all under one root folder (voyenv renames it).
+# Builds lizard-voyager.zip: only what Voyager runs (lizard.py and its code
+# packages, at HEAD) plus the libraries listed in bundle-requirements.txt,
+# all under one root folder (voyenv renames it). Tests, docs, website, dev
+# tooling and lock files stay out. The allow-list below is explicit, so files
+# upstream adds later stay out too.
 # Usage: build-bundle.sh [output.zip]   (PYTHON=... to pick the interpreter)
 set -euo pipefail
 
@@ -11,7 +14,17 @@ python="${PYTHON:-python3}"
 work="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$work"' EXIT
 
-git -C "$repo" archive --format=tar --prefix=lizard/ HEAD | tar -x -C "$work"
+# What Voyager needs at run time. git archive fails if a path is missing.
+#   lizard.py + lizard_core/lizard_languages/lizard_ext  the analyser
+#   instrument.yml, .ignore, results/                     the Voyager instrument
+#   LICENSE.txt                                           lizard's MIT notice
+ship=(lizard.py lizard_core lizard_languages lizard_ext
+      instrument.yml .ignore results LICENSE.txt)
+git -C "$repo" archive --format=tar --prefix=lizard/ HEAD -- "${ship[@]}" \
+    | tar -x -C "$work"
+# Documentation and example images inside the code packages are not used.
+find "$work/lizard" -name '*.md' -type f -delete
+rm -rf "$work/lizard/lizard_ext/images"
 
 # Wheels only, pinned by hash. Library packages land next to lizard.py, which
 # Python puts on sys.path when it runs the script. Their *.dist-info folders
