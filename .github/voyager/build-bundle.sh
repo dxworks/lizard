@@ -18,10 +18,22 @@ trap 'rm -rf "$work"' EXIT
 #   lizard.py + lizard_core/lizard_languages/lizard_ext  the analyser
 #   instrument.yml, .ignore, results/                     the Voyager instrument
 #   LICENSE.txt                                           lizard's MIT notice
+#   instrument.v2.yml, lizard-summary.py, summary_*.py,
+#   templates/summary.html                                the V2 manifest and the summary
 ship=(lizard.py lizard_core lizard_languages lizard_ext
-      instrument.yml .ignore results LICENSE.txt)
+      instrument.yml .ignore results LICENSE.txt
+      instrument.v2.yml lizard-summary.py summary_extract.py summary_render.py
+      templates/summary.html)
 git -C "$repo" archive --format=tar --prefix=lizard/ HEAD -- "${ship[@]}" \
     | tar -x -C "$work"
+# On a release, the tool's version from the tag, in both manifests (V1 and V2)
+if [[ "${GITHUB_REF_NAME:-}" == v*-voyager ]]; then
+    version="${GITHUB_REF_NAME#v}"; version="${version%-voyager}"
+    for f in "$work/lizard/instrument.yml" "$work/lizard/instrument.v2.yml"; do
+        awk -v v="$version" '!/^version:/ {print} /^name:/ {print "version: " v}' "$f" > "$f.tmp"
+        mv "$f.tmp" "$f"
+    done
+fi
 # Documentation and example images inside the code packages are not used.
 find "$work/lizard" -name '*.md' -type f -delete
 rm -rf "$work/lizard/lizard_ext/images"
